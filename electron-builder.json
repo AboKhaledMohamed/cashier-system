@@ -1,0 +1,44 @@
+{
+  "appId": "com.smartcashier.pos",
+  "productName": "SmartCashier",
+  "copyright": "Copyright © 2024 Smart Cashier",
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "node_modules/better-sqlite3/**/*",
+    "node_modules/bindings/**/*",
+    "node_modules/file-uri-to-path/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "node_modules/better-sqlite3/build/Release",
+      "to": "app.asar.unpacked/node_modules/better-sqlite3/build/Release"
+    }
+  ],
+  "win": {
+    "target": "nsis",
+    "legalTrademarks": "Smart Cashier POS System",
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "allowElevation": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "SmartCashier",
+    "artifactName": "SmartCashier-Setup-${version}.exe",
+    "deleteAppDataOnUninstall": true
+  },
+  "asar": true,
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/**/*",
+    "**/node_modules/better-sqlite3/build/Release/*.node"
+  ],
+  "npmRebuild": true,
+  "buildDependenciesFromSource": false
+}

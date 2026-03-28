@@ -1,0 +1,23 @@
+الكاشير الذكي - Smart Cashier POS System
+
+تعليمات التثبيت والاستخدام:
+
+1. البرنامج يتطلب نظام Windows 10 أو أحدث
+2. يفضل تشغيل البرنامج كمسؤول للحصول على أفضل أداء
+3. سيتم تثبيت البرنامج في المسار المحدد مع إنشاء اختصار على سطح المكتب
+4. جميع البيانات يتم حفظها محلياً على جهازك
+
+بالضغط على "التالي" فإنك توافق على شروط الاستخدام وسياسة الخصوصية.
+
+---
+
+Smart Cashier POS System
+
+Installation and Usage Instructions:
+
+1. The program requires Windows 10 or newer
+2. It is recommended to run the program as Administrator for best performance
+3. The program will be installed in the specified path with a desktop shortcut created
+4. All data is saved locally on your device
+
+By clicking "Next" you agree to the Terms of Service and Privacy Policy.
