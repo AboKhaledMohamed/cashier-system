@@ -20,6 +20,7 @@ import Button from '../components/ui/Button';
 import { useShop } from '../context/ShopContext';
 import { formatCurrency, formatNumber } from '../utils/formatters';
 import { notify, messages } from '../utils/toast';
+import { Printer } from 'lucide-react';
 import {
   Search,
   Plus,
@@ -97,8 +98,6 @@ export default function POSPage() {
   const [paidAmount, setPaidAmount] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [searchResults, setSearchResults] = useState<Product[]>([]);
-  const [showSearchResults, setShowSearchResults] = useState(false);
   const [notes, setNotes] = useState('');
   const [invoiceDataForReceipt, setInvoiceDataForReceipt] = useState<InvoiceDataForReceipt | null>(null);
   const [suspendedInvoices, setSuspendedInvoices] = useState<SuspendedInvoice[]>([]);
@@ -125,11 +124,19 @@ export default function POSPage() {
       const today = new Date().toISOString().split('T')[0];
       const stats = await api.reports.getSalesReport(today, today);
       const summary = stats.summary;
+      // Count unique products sold (not duplicates)
+      const uniqueProductIds = new Set<string>();
+      stats.invoices.forEach((inv: any) => {
+        inv.items?.forEach((item: any) => {
+          if (item.product_id) uniqueProductIds.add(item.product_id);
+        });
+      });
+      
       setTodayStats({
         sales: summary.total_sales || 0,
         invoices: summary.invoice_count || 0,
         avgInvoice: summary.invoice_count > 0 ? Math.round(summary.total_sales / summary.invoice_count) : 0,
-        itemsSold: stats.invoices.reduce((sum: number, inv: any) => sum + (inv.items?.length || 0), 0),
+        itemsSold: uniqueProductIds.size,
       });
     } catch (e) {
       console.error('Failed to load today stats:', e);
@@ -242,25 +249,21 @@ export default function POSPage() {
   const cart = calculateCart();
 
   // ============================================================================
-  // SEARCH PRODUCTS — البحث عن المنتجات
+  // SEARCH PRODUCTS — البحث عن المنتجات (محسّن مع useMemo)
   // ============================================================================
 
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      const results = products.filter(
-        (p) =>
-          p.name?.toLowerCase().includes(query) ||
-          p.barcode?.includes(query) ||
-          (p.barcode_alt && p.barcode_alt.includes(query))
-      );
-      setSearchResults(results);
-      setShowSearchResults(true);
-    } else {
-      setSearchResults([]);
-      setShowSearchResults(false);
-    }
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    return products.filter(
+      (p) =>
+        p.name?.toLowerCase().includes(query) ||
+        p.barcode?.includes(query) ||
+        (p.barcode_alt && p.barcode_alt.includes(query))
+    );
   }, [searchQuery, products]);
+
+  const showSearchResults = searchQuery.trim().length > 0;
 
   // ============================================================================
   // ADD TO CART — إضافة للسلة
@@ -296,7 +299,6 @@ export default function POSPage() {
     }
 
     setSearchQuery('');
-    setShowSearchResults(false);
   };
 
   // ============================================================================
@@ -526,7 +528,8 @@ export default function POSPage() {
       const changeAmt = paymentMethod === 'cash' ? Math.max(0, paidAmount - cart.total) : 0;
       const creditAmt = paymentMethod === 'credit' ? cart.total - paidAmount : 0;
 
-      await api.invoices.create({
+      // Create invoice and get the returned data with the correct invoice number
+      const savedInvoice = await api.invoices.create({
         user_id: currentSession.user_id,
         user_name: currentSession.user_name,
         customer_id: selectedCustomer?.id || null,
@@ -566,8 +569,15 @@ export default function POSPage() {
       // Refresh today's stats in real-time
       await loadTodayStats();
 
-      // Show receipt
-      setInvoiceDataForReceipt(invoiceData);
+      // Update invoice data with the saved invoice number from backend
+      const finalInvoiceData: InvoiceDataForReceipt = {
+        ...invoiceData,
+        id: savedInvoice.id,
+        invoice_number: savedInvoice.invoice_number, // Use the actual invoice number from database
+      };
+
+      // Show receipt with correct invoice number
+      setInvoiceDataForReceipt(finalInvoiceData);
       setShowReceipt(true);
       notify.success('تم إتمام البيع بنجاح');
     } catch (err: any) {
@@ -575,30 +585,105 @@ export default function POSPage() {
     }
   };
 
+  // Complete Sale And Print — إتمام البيع وطباعة الفاتورة
+  const completeSaleAndPrint = async () => {
+    await completeSale();
+    // After sale completes, trigger print dialog
+    setTimeout(() => {
+      window.print();
+    }, 500);
+  };
+
   // ============================================================================
-  // KEYBOARD SHORTCUTS
+  // KEYBOARD SHORTCUTS - optimized with refs to avoid re-registration
   // ============================================================================
 
+  // Ref to access completeSale function - MUST be declared before keyboard effect
+  const completeSaleRef = useRef<() => void>(null);
+  useEffect(() => { completeSaleRef.current = completeSale; }, [completeSale]);
+
+  // Ref to access completeSaleAndPrint function
+  const completeSaleAndPrintRef = useRef<() => void>(null);
+  useEffect(() => { completeSaleAndPrintRef.current = completeSaleAndPrint; }, [completeSaleAndPrint]);
+
+  // Use refs to access current state values without re-registering listeners
+  const cartItemsRef = useRef(cartItems);
+  const cartRef = useRef(cart);
+  const paymentMethodRef = useRef(paymentMethod);
+  const selectedCustomerRef = useRef(selectedCustomer);
+  const paidAmountRef = useRef(paidAmount);
+  const showSuspendedInvoicesRef = useRef(showSuspendedInvoices);
+  const suspendedInvoicesRef = useRef(suspendedInvoices);
+
+  // Single effect to update all refs - more efficient than separate effects
+  useEffect(() => {
+    cartItemsRef.current = cartItems;
+    cartRef.current = cart;
+    paymentMethodRef.current = paymentMethod;
+    selectedCustomerRef.current = selectedCustomer;
+    paidAmountRef.current = paidAmount;
+    showSuspendedInvoicesRef.current = showSuspendedInvoices;
+    suspendedInvoicesRef.current = suspendedInvoices;
+  }, [cartItems, cart, paymentMethod, selectedCustomer, paidAmount, showSuspendedInvoices, suspendedInvoices]);
+
+  // Register keyboard shortcuts once - no dependencies that cause re-registration
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
+      // Access current values through refs
+      const currentCartItems = cartItemsRef.current;
+      const currentCart = cartRef.current;
+      const currentPaymentMethod = paymentMethodRef.current;
+      const currentSelectedCustomer = selectedCustomerRef.current;
+      const currentPaidAmount = paidAmountRef.current;
+      const currentShowSuspendedInvoices = showSuspendedInvoicesRef.current;
+      const currentSuspendedInvoices = suspendedInvoicesRef.current;
+
       if (e.key === 'F2') {
         e.preventDefault();
         searchInputRef.current?.focus();
       } else if (e.key === 'F4') {
         e.preventDefault();
-        suspendInvoice();
+        // Only suspend if there are items
+        if (currentCartItems.length > 0) {
+          const suspendedInvoice = {
+            id: `suspended-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            items: currentCartItems,
+            selectedCustomer: currentSelectedCustomer?.id,
+            paymentMethod: currentPaymentMethod,
+            notes: '',
+          };
+          setSuspendedInvoices(prev => [...prev, suspendedInvoice]);
+          resetSale();
+          notify.success('تم تعليق الفاتورة بنجاح');
+        }
       } else if (e.key === 'F9') {
         e.preventDefault();
-        setShowSuspendedInvoices(!showSuspendedInvoices);
+        setShowSuspendedInvoices(!currentShowSuspendedInvoices);
+      } else if (e.key === 'F10') {
+        e.preventDefault();
+        // Complete sale and print
+        if (currentCartItems.length === 0) {
+          notify.error('السلة فارغة');
+          return;
+        }
+        // Trigger completeSaleAndPrint through a ref callback
+        completeSaleAndPrintRef.current?.();
       } else if (e.key === 'F12') {
         e.preventDefault();
-        completeSale();
+        // Complete sale logic inline to avoid dependency issues
+        if (currentCartItems.length === 0) {
+          notify.error('السلة فارغة');
+          return;
+        }
+        // Trigger completeSale through a ref callback
+        completeSaleRef.current?.();
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [cartItems, paymentMethod, selectedCustomer, cart, paidAmount, showSuspendedInvoices]);
+  }, []); // Empty dependencies - register once only
 
   // ============================================================================
   // RESET SALE — إعادة تعيين
@@ -914,7 +999,7 @@ export default function POSPage() {
 
             {/* Keyboard Shortcuts */}
             <div 
-              className="rounded-lg p-2 grid grid-cols-4 gap-2 text-center transition-theme"
+              className="rounded-lg p-2 grid grid-cols-5 gap-2 text-center transition-theme"
               style={{ backgroundColor: 'var(--card-bg)' }}
             >
               <div>
@@ -937,6 +1022,13 @@ export default function POSPage() {
                   style={{ backgroundColor: 'var(--surface-1)', color: 'var(--info)' }}
                 >F9</kbd>
                 <p className="text-[10px] transition-theme" style={{ color: 'var(--text-muted)' }}>استرجاع</p>
+              </div>
+              <div>
+                <kbd 
+                  className="px-2 py-1 rounded font-bold text-[12px] transition-theme"
+                  style={{ backgroundColor: 'var(--surface-1)', color: 'var(--success)' }}
+                >F10</kbd>
+                <p className="text-[10px] transition-theme" style={{ color: 'var(--text-muted)' }}>طباعة</p>
               </div>
               <div>
                 <kbd 
@@ -1358,17 +1450,30 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* Complete Sale Button */}
-            <Button
-              variant="primary"
-              fullWidth
-              onClick={completeSale}
-              disabled={cartItems.length === 0 || (paymentMethod === 'credit' && !selectedCustomer)}
-              size="large"
-              className="text-[18px]"
-            >
-              إتمام البيع (F12)
-            </Button>
+            {/* Complete Sale Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={completeSale}
+                disabled={cartItems.length === 0 || (paymentMethod === 'credit' && !selectedCustomer)}
+                size="large"
+                className="text-[16px]"
+              >
+                حفظ (F12)
+              </Button>
+              <Button
+                variant="success"
+                fullWidth
+                onClick={completeSaleAndPrint}
+                disabled={cartItems.length === 0 || (paymentMethod === 'credit' && !selectedCustomer)}
+                size="large"
+                className="text-[16px] flex items-center justify-center gap-2"
+              >
+                <Printer className="w-5 h-5" />
+                حفظ وطباعة (F10)
+              </Button>
+            </div>
 
             {/* Suspended Invoices */}
             {suspendedInvoices.length > 0 && (

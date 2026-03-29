@@ -128,8 +128,15 @@ function registerReportHandlers() {
     const invoices = db.prepare(`
       SELECT * FROM invoices 
       WHERE date BETWEEN ? AND ? AND invoice_type = 'بيع' AND status = 'مكتمل'
-      ORDER BY date, time
+      ORDER BY date DESC, time DESC
     `).all(dateFrom, dateTo);
+
+    // Fetch items for each invoice
+    for (const invoice of invoices) {
+      invoice.items = db.prepare(`
+        SELECT * FROM invoice_items WHERE invoice_id = ?
+      `).all(invoice.id);
+    }
 
     const summary = db.prepare(`
       SELECT 

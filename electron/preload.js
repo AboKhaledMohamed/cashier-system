@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getById: (id) => ipcRenderer.invoke('invoices:getById', id),
     create: (data) => ipcRenderer.invoke('invoices:create', data),
     void: (id, reason, userId) => ipcRenderer.invoke('invoices:void', id, reason, userId),
+    delete: (id) => ipcRenderer.invoke('invoices:delete', id),
     getByCustomer: (customerId) => ipcRenderer.invoke('invoices:getByCustomer', customerId),
     getNextNumber: () => ipcRenderer.invoke('invoices:getNextNumber'),
     getSuspended: () => ipcRenderer.invoke('invoices:getSuspended'),

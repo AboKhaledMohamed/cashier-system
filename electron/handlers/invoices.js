@@ -25,7 +25,14 @@ function registerInvoiceHandlers() {
     if (filters.invoiceType) { sql += ` AND invoice_type = ?`; params.push(filters.invoiceType); }
 
     sql += ` ORDER BY created_at DESC LIMIT 500`;
-    return db.prepare(sql).all(...params);
+    const invoices = db.prepare(sql).all(...params);
+    
+    // Fetch items for each invoice
+    for (const invoice of invoices) {
+      invoice.items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoice.id);
+    }
+    
+    return invoices;
   });
 
   // Get invoice by ID with items
@@ -367,6 +374,28 @@ function registerInvoiceHandlers() {
     db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(id);
     db.prepare("DELETE FROM invoices WHERE id = ? AND status = 'معلق'").run(id);
     return { success: true };
+  });
+
+  // Delete invoice completely (hard delete)
+  ipcMain.handle('invoices:delete', async (event, id) => {
+    const db = getDb();
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
+    if (!invoice) throw new Error('الفاتورة غير موجودة');
+    
+    return db.transaction(() => {
+      // Delete invoice items first
+      db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(id);
+      // Delete the invoice
+      db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
+      
+      // Audit log
+      db.prepare(`INSERT INTO audit_log (user_id, user_name, action, entity_type, entity_id, description)
+        VALUES (?, 'النظام', 'حذف_فاتورة', 'invoice', ?, ?)`).run(
+        'user-admin-001', id, `حذف فاتورة ${invoice.invoice_number}`
+      );
+      
+      return { success: true };
+    })();
   });
 }
 

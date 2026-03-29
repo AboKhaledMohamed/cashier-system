@@ -7,11 +7,12 @@ import { formatCurrency } from '../utils/formatters';
 import {
   FileText,
   Download,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
   Store,
   Package,
+  Eye,
+  Trash2,
+  X,
+  Printer,
 } from 'lucide-react';
 import {
   BarChart,
@@ -66,7 +67,43 @@ export default function ReportsPage() {
     loadReports();
   }, [dateFrom, dateTo]);
 
-  // Derived stats
+  // State for modals
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<{id: string, number: string} | null>(null);
+
+  // Handle print invoice
+  const handlePrintInvoice = (inv: any) => {
+    setSelectedInvoice(inv);
+    // Open print window after a short delay to ensure state is updated
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+  const handleViewInvoice = (inv: any) => {
+    setSelectedInvoice(inv);
+    setShowInvoiceModal(true);
+  };
+
+  // Handle delete invoice - non-blocking with custom modal
+  const confirmDeleteInvoice = (id: string, invoiceNumber: string) => {
+    setInvoiceToDelete({id, number: invoiceNumber});
+  };
+
+  const executeDeleteInvoice = async () => {
+    if (!invoiceToDelete) return;
+    
+    try {
+      await api.invoices.delete(invoiceToDelete.id);
+      // Remove deleted invoice from local state immediately (no blocking)
+      setSalesData(prev => prev.filter(inv => inv.id !== invoiceToDelete.id));
+    } catch (e: any) {
+      console.error('Delete error:', e);
+      alert('فشل حذف الفاتورة: ' + (e.message || 'خطأ غير معروف'));
+    } finally {
+      setInvoiceToDelete(null);
+    }
+  };
   const filteredInvoicesCount = salesData.length;
   const filteredRevenue = salesData.reduce((sum, inv) => sum + (inv.total || inv.total_amount || 0), 0);
   const totalDiscount = profitData?.total_discounts || 0;
@@ -85,68 +122,75 @@ export default function ReportsPage() {
   
   return (
     <div 
-      className="min-h-screen transition-theme"
+      className="h-screen overflow-hidden transition-theme flex flex-col"
       style={{ backgroundColor: 'var(--page-bg)' }}
     >
       <Header title="التقارير" />
       
-      <div className="p-7 space-y-6">
+      <div className="p-7 space-y-6 flex-1 overflow-hidden">
         {/* Report Type Tabs */}
         <div 
-          className="flex gap-2 border-b transition-theme"
+          className="flex gap-2 border-b transition-theme flex-shrink-0 items-center justify-between"
           style={{ borderColor: 'var(--card-bg)' }}
         >
-          <button
-            onClick={() => setActiveTab('sales')}
-            className="px-6 py-3 font-medium transition-all"
-            style={{
-              color: activeTab === 'sales' ? 'var(--primary)' : 'var(--text-muted)',
-              borderBottom: activeTab === 'sales' ? '2px solid var(--primary)' : 'none'
-            }}
-          >
-            تقارير المبيعات
-          </button>
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className="px-6 py-3 font-medium transition-all"
-            style={{
-              color: activeTab === 'inventory' ? 'var(--primary)' : 'var(--text-muted)',
-              borderBottom: activeTab === 'inventory' ? '2px solid var(--primary)' : 'none'
-            }}
-          >
-            تقارير المخزون
-          </button>
-          <button
-            onClick={() => setActiveTab('purchases')}
-            className="px-6 py-3 font-medium transition-all"
-            style={{
-              color: activeTab === 'purchases' ? 'var(--primary)' : 'var(--text-muted)',
-              borderBottom: activeTab === 'purchases' ? '2px solid var(--primary)' : 'none'
-            }}
-          >
-            تقارير المشتريات
-          </button>
-        </div>
-        
-        {/* Filters */}
-        <div 
-          className="rounded-lg p-5 transition-theme"
-          style={{ backgroundColor: 'var(--card-bg)' }}
-        >
-          <div className="flex flex-wrap items-end gap-4">
-            <Input
-              label="من تاريخ"
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('sales')}
+              className="px-6 py-3 font-medium transition-all"
+              style={{
+                color: activeTab === 'sales' ? 'var(--primary)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'sales' ? '2px solid var(--primary)' : 'none'
+              }}
+            >
+              تقارير المبيعات
+            </button>
+            <button
+              onClick={() => setActiveTab('inventory')}
+              className="px-6 py-3 font-medium transition-all"
+              style={{
+                color: activeTab === 'inventory' ? 'var(--primary)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'inventory' ? '2px solid var(--primary)' : 'none'
+              }}
+            >
+              تقارير المخزون
+            </button>
+            <button
+              onClick={() => setActiveTab('purchases')}
+              className="px-6 py-3 font-medium transition-all"
+              style={{
+                color: activeTab === 'purchases' ? 'var(--primary)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'purchases' ? '2px solid var(--primary)' : 'none'
+              }}
+            >
+              تقارير المشتريات
+            </button>
+          </div>
+          
+          {/* Report Type Selector */}
+          <div className="flex items-center gap-3">
+            <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              className="h-[36px] rounded-lg px-3 outline-none transition-theme text-[14px]"
+              style={{
+                backgroundColor: 'var(--input-bg)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)'
+              }}
             />
-            <Input
-              label="إلى تاريخ"
+            <span style={{ color: 'var(--text-muted)' }}>إلى</span>
+            <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              className="h-[36px] rounded-lg px-3 outline-none transition-theme text-[14px]"
+              style={{
+                backgroundColor: 'var(--input-bg)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)'
+              }}
             />
-            
             <select
               value={reportType}
               onChange={(e) => {
@@ -165,7 +209,7 @@ export default function ReportsPage() {
                   setDateTo(endOfMonth.toISOString().split('T')[0]);
                 }
               }}
-              className="h-[42px] rounded-lg px-4 outline-none transition-theme"
+              className="h-[36px] rounded-lg px-3 outline-none transition-theme text-[14px]"
               style={{
                 backgroundColor: 'var(--input-bg)',
                 color: 'var(--text-primary)',
@@ -176,129 +220,45 @@ export default function ReportsPage() {
               <option value="monthly">تقرير شهري</option>
               <option value="custom">تقرير مخصص</option>
             </select>
-            
-
-            
-            <Button variant="primary" className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              عرض التقرير
-            </Button>
           </div>
         </div>
         
         {/* Main Content - Based on Active Tab */}
         {activeTab === 'sales' && (
-          <div className="grid grid-cols-3 gap-6">
-            {/* Left Side - Summary */}
-            <div className="col-span-2 space-y-6">
-              {/* Summary Cards */}
-              <div className="grid grid-cols-2 gap-4">
-                <div 
-                  className="rounded-lg p-5 transition-theme"
-                  style={{ backgroundColor: 'var(--card-bg)' }}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: 'var(--info-bg)' }}
-                    >
-                      <FileText className="w-5 h-5" style={{ color: 'var(--info)' }} />
-                    </div>
-                    <div>
-                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>عدد الفواتير</p>
-                      <p className="text-[21px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                        {filteredInvoicesCount}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div 
-                  className="rounded-lg p-5 transition-theme"
-                  style={{ backgroundColor: 'var(--card-bg)' }}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: 'var(--primary-light)' }}
-                    >
-                      <DollarSign className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-                    </div>
-                    <div>
-                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الإيراد</p>
-                      <p className="text-[21px] font-bold" style={{ color: 'var(--primary)' }}>
-                        {filteredRevenue.toLocaleString('en-US')} جنيه
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div 
-                  className="rounded-lg p-5 transition-theme"
-                  style={{ backgroundColor: 'var(--card-bg)' }}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: 'var(--warning-bg)' }}
-                    >
-                      <TrendingDown className="w-5 h-5" style={{ color: 'var(--warning)' }} />
-                    </div>
-                    <div>
-                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الخصومات</p>
-                      <p className="text-[21px] font-bold" style={{ color: 'var(--warning)' }}>
-                        {totalDiscount.toLocaleString('en-US')} جنيه
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div 
-                  className="rounded-lg p-5 transition-theme"
-                  style={{ backgroundColor: 'var(--card-bg)' }}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: 'var(--primary-light)' }}
-                    >
-                      <TrendingUp className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-                    </div>
-                    <div>
-                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>صافي الربح التقديري</p>
-                      <p className="text-[21px] font-bold" style={{ color: 'var(--primary)' }}>
-                        {netProfit.toLocaleString('en-US')} جنيه
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
+          <div className="grid grid-cols-3 gap-6" style={{ height: 'calc(100vh - 220px)' }}>
+            {/* Left Side - Invoices Table */}
+            <div className="col-span-2 flex flex-col gap-4 overflow-hidden">
               {/* Filtered Invoices Table */}
               <div 
-                className="rounded-lg p-5 transition-theme"
+                className="rounded-lg p-5 transition-theme flex flex-col flex-1 overflow-hidden"
                 style={{ backgroundColor: 'var(--card-bg)' }}
               >
-                <h3 className="text-[21px] font-semibold mb-4 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                <h3 className="text-[21px] font-semibold mb-4 transition-theme flex-shrink-0 flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
                   فواتير المبيعات
+                  <span 
+                    className="text-[14px] px-3 py-1 rounded-full font-medium"
+                    style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)' }}
+                  >
+                    {salesData.length} فاتورة
+                  </span>
                 </h3>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto flex-1">
                   <table className="w-full text-[14px]">
                     <thead 
-                      className="transition-theme"
+                      className="transition-theme sticky top-0"
                       style={{ backgroundColor: 'var(--surface-1)' }}
                     >
                       <tr>
                         <th className="p-3 text-right transition-theme" style={{ color: 'var(--text-muted)' }}>رقم الفاتورة</th>
                         <th className="p-3 text-right transition-theme" style={{ color: 'var(--text-muted)' }}>التاريخ</th>
-                        <th className="p-3 text-right transition-theme" style={{ color: 'var(--text-muted)' }}>الفرع</th>
-                        <th className="p-3 text-right transition-theme" style={{ color: 'var(--text-muted)' }}>المخزن</th>
+                        <th className="p-3 text-right transition-theme" style={{ color: 'var(--text-muted)' }}>اسم العميل</th>
                         <th className="p-3 text-right transition-theme" style={{ color: 'var(--text-muted)' }}>الإجمالي</th>
+                        <th className="p-3 text-center transition-theme" style={{ color: 'var(--text-muted)' }}>إجراءات</th>
                       </tr>
                     </thead>
                     <tbody>
                       {salesData.length === 0 ? (
-                        <tr><td colSpan={4} className="p-4 text-center transition-theme" style={{ color: 'var(--text-muted)' }}>لا توجد مبيعات في هذه الفترة</td></tr>
+                        <tr><td colSpan={5} className="p-4 text-center transition-theme" style={{ color: 'var(--text-muted)' }}>لا توجد مبيعات في هذه الفترة</td></tr>
                       ) : (
                         salesData.map((inv) => (
                           <tr 
@@ -308,8 +268,36 @@ export default function ReportsPage() {
                           >
                             <td className="p-3 transition-theme" style={{ color: 'var(--text-primary)' }}>{inv.invoice_number}</td>
                             <td className="p-3 transition-theme" style={{ color: 'var(--text-muted)' }}>{inv.date} {inv.time}</td>
-                            <td className="p-3 transition-theme" style={{ color: 'var(--text-muted)' }}>{inv.customer_name || 'عميل نقدي'}</td>
+                            <td className="p-3 transition-theme" style={{ color: 'var(--text-primary)' }}>{inv.customer_name || 'عميل نقدي'}</td>
                             <td className="p-3 font-bold" style={{ color: 'var(--primary)' }}>{formatCurrency(inv.total || inv.total_amount || 0)}</td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => handleViewInvoice(inv)}
+                                  className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                                  style={{ backgroundColor: 'var(--info-bg)', color: 'var(--info)' }}
+                                  title="عرض التفاصيل"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handlePrintInvoice(inv)}
+                                  className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                                  style={{ backgroundColor: 'var(--success-bg)', color: 'var(--success)' }}
+                                  title="طباعة الفاتورة"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => confirmDeleteInvoice(inv.id, inv.invoice_number)}
+                                  className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                                  style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}
+                                  title="حذف"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -320,7 +308,7 @@ export default function ReportsPage() {
             </div>
             
             {/* Right Side - Quick Export */}
-            <div className="space-y-4">
+            <div className="space-y-4 flex-shrink-0">
               <div 
                 className="rounded-lg p-5 transition-theme"
                 style={{ backgroundColor: 'var(--card-bg)' }}
@@ -482,6 +470,159 @@ export default function ReportsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Invoice Details Modal */}
+        {showInvoiceModal && selectedInvoice && (
+          <div 
+            className="fixed inset-0 flex items-center justify-center z-50"
+            style={{ backgroundColor: 'var(--overlay-bg)' }}
+          >
+            <div 
+              className="rounded-xl p-6 w-[600px] max-w-[90%] max-h-[80vh] overflow-y-auto transition-theme"
+              style={{ backgroundColor: 'var(--card-bg)' }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  تفاصيل الفاتورة {selectedInvoice.invoice_number}
+                </h3>
+                <button
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                  style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Invoice Info */}
+              <div 
+                className="grid grid-cols-2 gap-4 mb-6 p-4 rounded-lg"
+                style={{ backgroundColor: 'var(--surface-1)' }}
+              >
+                <div>
+                  <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>رقم الفاتورة</p>
+                  <p className="text-[16px] font-bold" style={{ color: 'var(--text-primary)' }}>{selectedInvoice.invoice_number}</p>
+                </div>
+                <div>
+                  <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>التاريخ</p>
+                  <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{selectedInvoice.date} {selectedInvoice.time}</p>
+                </div>
+                <div>
+                  <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>العميل</p>
+                  <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{selectedInvoice.customer_name || 'عميل نقدي'}</p>
+                </div>
+                <div>
+                  <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>طريقة الدفع</p>
+                  <p className="text-[14px]" style={{ color: 'var(--primary)' }}>{selectedInvoice.payment_method || 'نقدي'}</p>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="mb-4">
+                <h4 className="text-[16px] font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>الأصناف</h4>
+                {(!selectedInvoice.items || selectedInvoice.items.length === 0) ? (
+                  <p className="text-[14px] p-3 rounded" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--surface-1)' }}>
+                    لا توجد أصناف في هذه الفاتورة
+                  </p>
+                ) : (
+                  <table className="w-full text-[13px]">
+                    <thead style={{ backgroundColor: 'var(--surface-1)' }}>
+                      <tr>
+                        <th className="p-2 text-right" style={{ color: 'var(--text-muted)' }}>المنتج</th>
+                        <th className="p-2 text-center" style={{ color: 'var(--text-muted)' }}>الكمية</th>
+                        <th className="p-2 text-center" style={{ color: 'var(--text-muted)' }}>السعر</th>
+                        <th className="p-2 text-left" style={{ color: 'var(--text-muted)' }}>الإجمالي</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedInvoice.items.map((item: any, idx: number) => (
+                        <tr key={idx} className="border-b" style={{ borderColor: 'var(--surface-1)' }}>
+                          <td className="p-2" style={{ color: 'var(--text-primary)' }}>{item.product_name}</td>
+                          <td className="p-2 text-center" style={{ color: 'var(--text-primary)' }}>{item.qty}</td>
+                          <td className="p-2 text-center" style={{ color: 'var(--text-primary)' }}>{formatCurrency(item.unit_price)}</td>
+                          <td className="p-2 text-left font-bold" style={{ color: 'var(--primary)' }}>{formatCurrency(item.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Totals */}
+              <div 
+                className="p-4 rounded-lg space-y-2"
+                style={{ backgroundColor: 'var(--surface-1)' }}
+              >
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--text-muted)' }}>المجموع:</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{formatCurrency(selectedInvoice.subtotal || 0)}</span>
+                </div>
+                {selectedInvoice.discount_amount > 0 && (
+                  <div className="flex justify-between" style={{ color: 'var(--danger)' }}>
+                    <span>الخصم:</span>
+                    <span>-{formatCurrency(selectedInvoice.discount_amount)}</span>
+                  </div>
+                )}
+                {selectedInvoice.tax_amount > 0 && (
+                  <div className="flex justify-between" style={{ color: 'var(--info)' }}>
+                    <span>الضريبة:</span>
+                    <span>+{formatCurrency(selectedInvoice.tax_amount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-[18px] font-bold pt-2 border-t" style={{ borderColor: 'var(--primary)' }}>
+                  <span style={{ color: 'var(--text-primary)' }}>الإجمالي:</span>
+                  <span style={{ color: 'var(--primary)' }}>{formatCurrency(selectedInvoice.total || selectedInvoice.total_amount || 0)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Delete Confirmation Modal */}
+        {invoiceToDelete && (
+          <div 
+            className="fixed inset-0 flex items-center justify-center z-50"
+            style={{ backgroundColor: 'var(--overlay-bg)' }}
+          >
+            <div 
+              className="rounded-xl p-6 w-[400px] max-w-[90%] transition-theme"
+              style={{ backgroundColor: 'var(--card-bg)' }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div 
+                  className="w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--danger-bg)' }}
+                >
+                  <Trash2 className="w-6 h-6" style={{ color: 'var(--danger)' }} />
+                </div>
+                <h3 className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  تأكيد الحذف
+                </h3>
+              </div>
+              
+              <p className="text-[16px] mb-6 transition-theme" style={{ color: 'var(--text-secondary)' }}>
+                هل أنت متأكد من حذف فاتورة <strong>{invoiceToDelete.number}</strong>؟<br/>
+                <span className="text-[14px]" style={{ color: 'var(--danger)' }}>لا يمكن التراجع عن هذا الإجراء</span>
+              </p>
+              
+              <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  fullWidth
+                  onClick={() => setInvoiceToDelete(null)}
+                >
+                  إلغاء
+                </Button>
+                <Button
+                  variant="danger"
+                  fullWidth
+                  onClick={executeDeleteInvoice}
+                >
+                  حذف
+                </Button>
+              </div>
             </div>
           </div>
         )}
