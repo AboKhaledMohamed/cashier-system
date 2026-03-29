@@ -749,10 +749,6 @@ function runMigrations() {
 
   // Define migrations as version => { sql, description }
   const migrations = {
-    2: { 
-      sql: 'ALTER TABLE shop_settings ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 1', 
-      description: 'Add dark_mode setting' 
-    },
     // Future migrations go here
   };
 

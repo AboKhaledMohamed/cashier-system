@@ -47,7 +47,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   try {
     // Initialize database
-    const dbPath = path.join(app.getPath('userData'), 'smartpos.db');
+    const dbPath = path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'smartpos', 'smartpos.db');
     console.log('Database path:', dbPath);
     initDatabase(dbPath);
 

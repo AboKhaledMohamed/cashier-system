@@ -14,6 +14,18 @@ function registerSupplierHandlers() {
 
   ipcMain.handle('suppliers:create', async (event, data) => {
     const db = getDb();
+    
+    // Check for duplicate supplier by name or phone
+    const existingByName = db.prepare('SELECT * FROM suppliers WHERE LOWER(name) = LOWER(?) AND is_active = 1').get(data.name);
+    if (existingByName) {
+      throw new Error(`المورد "${data.name}" موجود مسبقاً`);
+    }
+    
+    const existingByPhone = db.prepare('SELECT * FROM suppliers WHERE phone = ? AND is_active = 1').get(data.phone);
+    if (existingByPhone) {
+      throw new Error(`رقم التليفون "${data.phone}" مسجل مسبقاً للمورد "${existingByPhone.name}"`);
+    }
+    
     const id = generateId('sup');
     db.prepare(`INSERT INTO suppliers (id, name, phone, phone_alt, email, address, contact_person, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(

@@ -153,6 +153,10 @@ function registerInvoiceHandlers() {
 
       // 3. Handle deferred payment (آجل) — update customer balance
       if (data.payment_method === 'آجل' && data.customer_id && data.credit_amount > 0) {
+        // Log before update for verification
+        const beforeCustomer = db.prepare('SELECT current_balance, credit_used, name FROM customers WHERE id = ?').get(data.customer_id);
+        console.log(`[DEBT-TEST] Before credit sale - Customer: ${beforeCustomer?.name}, Balance: ${beforeCustomer?.current_balance}, Credit: ${data.credit_amount}`);
+        
         db.prepare(`UPDATE customers SET 
           current_balance = current_balance + ?,
           credit_used = credit_used + ?,
@@ -164,6 +168,11 @@ function registerInvoiceHandlers() {
           data.credit_amount, data.credit_amount, data.credit_amount,
           data.total, dateStr, dateStr, data.customer_id
         );
+        
+        // Log after update
+        const afterCustomer = db.prepare('SELECT current_balance, credit_used FROM customers WHERE id = ?').get(data.customer_id);
+        console.log(`[DEBT-TEST] After credit sale - New Balance: ${afterCustomer?.current_balance}, Expected: ${(beforeCustomer?.current_balance || 0) + data.credit_amount}`);
+        console.log(`[DEBT-TEST] ✓ Credit sale processed successfully`);
       } else if (data.customer_id) {
         // Cash sale but with customer — update their purchase history
         db.prepare(`UPDATE customers SET 

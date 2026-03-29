@@ -38,6 +38,18 @@ function registerCustomerHandlers() {
 
   ipcMain.handle('customers:create', async (event, data) => {
     const db = getDb();
+    
+    // Check for duplicate customer by name or phone
+    const existingByName = db.prepare('SELECT * FROM customers WHERE LOWER(name) = LOWER(?) AND is_active = 1').get(data.name);
+    if (existingByName) {
+      throw new Error(`العميل "${data.name}" موجود مسبقاً`);
+    }
+    
+    const existingByPhone = db.prepare('SELECT * FROM customers WHERE phone = ? AND is_active = 1').get(data.phone);
+    if (existingByPhone) {
+      throw new Error(`رقم التليفون "${data.phone}" مسجل مسبقاً للعميل "${existingByPhone.name}"`);
+    }
+    
     const id = generateId('cust');
     db.prepare(`INSERT INTO customers (id, name, phone, phone_alt, address, national_id,
       credit_limit, neighborhood, building, floor, landmark,

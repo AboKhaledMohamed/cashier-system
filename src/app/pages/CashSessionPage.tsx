@@ -104,7 +104,7 @@ export default function CashSessionPage() {
       date: today,
       user_id: 'user-cashier-001', // Should come from logged in user
       user_name: 'أحمد علي',
-      opened_at: new Date().toLocaleTimeString('ar-EG', { hour12: false }),
+      opened_at: new Date().toLocaleTimeString('en-US', { hour12: false }),
       opening_balance: openingData.opening_balance,
       total_sales_cash: 0,
       total_sales_credit: 0,
@@ -146,7 +146,7 @@ export default function CashSessionPage() {
     
     const updatedSession: CashSession = {
       ...activeSession,
-      closed_at: new Date().toLocaleTimeString('ar-EG', { hour12: false }),
+      closed_at: new Date().toLocaleTimeString('en-US', { hour12: false }),
       closing_balance: closingData.actual_balance,
       total_sales_cash: stats.cash_sales,
       total_sales_credit: stats.credit_sales,
@@ -255,7 +255,7 @@ export default function CashSessionPage() {
             >
               <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>مبيعات نقدية</p>
               <p className="text-[24px] font-bold" style={{ color: 'var(--primary)' }}>
-                {stats.cash_sales.toLocaleString('ar-EG')}
+                {stats.cash_sales.toLocaleString('en-US')}
               </p>
             </div>
             
@@ -265,7 +265,7 @@ export default function CashSessionPage() {
             >
               <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>مبيعات آجلة</p>
               <p className="text-[24px] font-bold" style={{ color: 'var(--info)' }}>
-                {stats.credit_sales.toLocaleString('ar-EG')}
+                {stats.credit_sales.toLocaleString('en-US')}
               </p>
             </div>
             
@@ -275,7 +275,7 @@ export default function CashSessionPage() {
             >
               <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>تحصيل</p>
               <p className="text-[24px] font-bold" style={{ color: 'var(--warning)' }}>
-                {stats.collections.toLocaleString('ar-EG')}
+                {stats.collections.toLocaleString('en-US')}
               </p>
             </div>
             
@@ -285,7 +285,7 @@ export default function CashSessionPage() {
             >
               <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>مصاريف</p>
               <p className="text-[24px] font-bold" style={{ color: 'var(--danger)' }}>
-                {stats.expenses.toLocaleString('ar-EG')}
+                {stats.expenses.toLocaleString('en-US')}
               </p>
             </div>
             
@@ -295,7 +295,7 @@ export default function CashSessionPage() {
             >
               <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>مرتجعات</p>
               <p className="text-[24px] font-bold" style={{ color: 'var(--accent-orange)' }}>
-                {stats.returns.toLocaleString('ar-EG')}
+                {stats.returns.toLocaleString('en-US')}
               </p>
             </div>
             
@@ -305,7 +305,7 @@ export default function CashSessionPage() {
             >
               <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>دفع موردين</p>
               <p className="text-[24px] font-bold" style={{ color: 'var(--accent-purple)' }}>
-                {stats.supplier_payments.toLocaleString('ar-EG')}
+                {stats.supplier_payments.toLocaleString('en-US')}
               </p>
             </div>
           </div>
@@ -313,7 +313,7 @@ export default function CashSessionPage() {
         
         {/* Previous Sessions */}
         <div 
-          className="rounded-lg overflow-hidden transition-theme"
+          className="rounded-lg overflow-hidden transition-theme overflow-x-auto"
           style={{ backgroundColor: 'var(--card-bg)' }}
         >
           <div 
@@ -366,21 +366,21 @@ export default function CashSessionPage() {
                         <div className="col-span-2 text-center">
                           <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>الرصيد الابتدائي</p>
                           <p className="text-[16px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                            {session.opening_balance.toLocaleString('ar-EG')}
+                            {session.opening_balance.toLocaleString('en-US')}
                           </p>
                         </div>
                         
                         <div className="col-span-2 text-center">
                           <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>الرصيد الختامي</p>
                           <p className="text-[16px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                            {session.closing_balance?.toLocaleString('ar-EG')}
+                            {session.closing_balance?.toLocaleString('en-US')}
                           </p>
                         </div>
                         
                         <div className="col-span-2 text-center">
                           <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي المبيعات</p>
                           <p className="text-[16px] font-bold" style={{ color: 'var(--primary)' }}>
-                            {(session.total_sales_cash + session.total_sales_credit).toLocaleString('ar-EG')}
+                            {(session.total_sales_cash + session.total_sales_credit).toLocaleString('en-US')}
                           </p>
                         </div>
                         
@@ -405,12 +405,12 @@ export default function CashSessionPage() {
                               session.difference! > 0 ? (
                                 <>
                                   <TrendingUp className="w-4 h-4" />
-                                  +{session.difference?.toLocaleString('ar-EG')}
+                                  +{session.difference?.toLocaleString('en-US')}
                                 </>
                               ) : (
                                 <>
                                   <TrendingDown className="w-4 h-4" />
-                                  {session.difference?.toLocaleString('ar-EG')}
+                                  {session.difference?.toLocaleString('en-US')}
                                 </>
                               )
                             ) : (
@@ -550,37 +550,37 @@ export default function CashSessionPage() {
                 <div className="flex justify-between">
                   <span style={{ color: 'var(--text-muted)' }}>الرصيد الابتدائي:</span>
                   <span className="font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {activeSession.opening_balance.toLocaleString('ar-EG')} ج
+                    {activeSession.opening_balance.toLocaleString('en-US')} ج
                   </span>
                 </div>
                 <div className="flex justify-between" style={{ color: 'var(--primary)' }}>
                   <span>+ مبيعات نقدية:</span>
                   <span className="font-bold">
-                    +{stats.cash_sales.toLocaleString('ar-EG')} ج
+                    +{stats.cash_sales.toLocaleString('en-US')} ج
                   </span>
                 </div>
                 <div className="flex justify-between" style={{ color: 'var(--warning)' }}>
                   <span>+ تحصيل:</span>
                   <span className="font-bold">
-                    +{stats.collections.toLocaleString('ar-EG')} ج
+                    +{stats.collections.toLocaleString('en-US')} ج
                   </span>
                 </div>
                 <div className="flex justify-between" style={{ color: 'var(--danger)' }}>
                   <span>- مصاريف:</span>
                   <span className="font-bold">
-                    -{stats.expenses.toLocaleString('ar-EG')} ج
+                    -{stats.expenses.toLocaleString('en-US')} ج
                   </span>
                 </div>
                 <div className="flex justify-between" style={{ color: 'var(--accent-orange)' }}>
                   <span>- مرتجعات:</span>
                   <span className="font-bold">
-                    -{stats.returns.toLocaleString('ar-EG')} ج
+                    -{stats.returns.toLocaleString('en-US')} ج
                   </span>
                 </div>
                 <div className="flex justify-between" style={{ color: 'var(--accent-purple)' }}>
                   <span>- دفع موردين:</span>
                   <span className="font-bold">
-                    -{stats.supplier_payments.toLocaleString('ar-EG')} ج
+                    -{stats.supplier_payments.toLocaleString('en-US')} ج
                   </span>
                 </div>
                 
@@ -597,7 +597,7 @@ export default function CashSessionPage() {
                       stats.expenses -
                       stats.returns -
                       stats.supplier_payments
-                    ).toLocaleString('ar-EG')} ج
+                    ).toLocaleString('en-US')} ج
                   </span>
                 </div>
               </div>
@@ -648,7 +648,7 @@ export default function CashSessionPage() {
                         stats.expenses -
                         stats.returns -
                         stats.supplier_payments)
-                    ).toLocaleString('ar-EG')}{' '}
+                    ).toLocaleString('en-US')}{' '}
                     ج
                   </p>
                 </div>

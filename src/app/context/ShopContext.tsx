@@ -66,6 +66,12 @@ export interface ShopSettings {
 }
 
 export interface DashboardStats {
+  // Monthly stats (new)
+  month_sales: number;
+  month_invoices: number;
+  month_customer_debt: number;
+  month_expenses: number;
+  // Today stats (keeping for compatibility)
   today_sales: number;
   today_invoices: number;
   today_returns: number;
@@ -322,7 +328,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const formatCurrency = useCallback((amount: number) => {
     if (amount === undefined || amount === null) return '-';
     const symbol = settings?.currency_symbol || 'ج.م';
-    return `${amount.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
+    return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
   }, [settings]);
 
   // ========================================

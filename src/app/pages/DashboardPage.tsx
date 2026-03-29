@@ -9,7 +9,7 @@ import {
   Package,
   Users,
   AlertCircle,
-  TrendingUp,
+  TrendingDown,
   Plus,
   ShoppingCart,
   UserPlus,
@@ -92,11 +92,11 @@ export default function DashboardPage() {
               <Plus className="w-5 h-5" />
               بيع جديد
             </Button>
-            <Button variant="info" onClick={() => navigate('/inventory')} className="flex items-center gap-2">
+            <Button variant="info" onClick={() => navigate('/inventory', { state: { openAddForm: true } })} className="flex items-center gap-2">
               <PackagePlus className="w-5 h-5" />
               إضافة منتج
             </Button>
-            <Button variant="ghost" onClick={() => navigate('/customers')} className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => navigate('/customers', { state: { openAddForm: true } })} className="flex items-center gap-2">
               <UserPlus className="w-5 h-5" />
               إضافة عميل
             </Button>
@@ -106,15 +106,15 @@ export default function DashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-3 gap-5">
           <KPICard
-            title="مبيعات اليوم"
-            value={`${(stats.today_sales || 0).toLocaleString('ar-EG')} جنيه`}
+            title="مبيعات الشهر"
+            value={`${(stats.month_sales || 0).toLocaleString('en-US')} جنيه`}
             icon={DollarSign}
             iconColor="var(--primary)"
             iconBg="var(--primary-light)"
           />
           <KPICard
-            title="عدد الفواتير"
-            value={stats.today_invoices || 0}
+            title="فواتير الشهر"
+            value={stats.month_invoices || 0}
             icon={FileText}
             iconColor="var(--info)"
             iconBg="var(--info-bg)"
@@ -134,18 +134,18 @@ export default function DashboardPage() {
             iconBg="rgba(139, 92, 246, 0.1)"
           />
           <KPICard
-            title="ديون العملاء"
-            value={`${(stats.total_customer_debt || 0).toLocaleString('ar-EG')} جنيه`}
+            title="ديون الشهر (آجل)"
+            value={`${(stats.month_customer_debt || 0).toLocaleString('en-US')} جنيه`}
             icon={AlertCircle}
             iconColor="var(--danger)"
             iconBg="var(--danger-bg)"
           />
           <KPICard
-            title="صافي اليوم"
-            value={`${(stats.today_net || 0).toLocaleString('ar-EG')} جنيه`}
-            icon={TrendingUp}
-            iconColor="var(--primary)"
-            iconBg="var(--primary-light)"
+            title="مصاريف الشهر"
+            value={`${(stats.month_expenses || 0).toLocaleString('en-US')} جنيه`}
+            icon={TrendingDown}
+            iconColor="var(--accent-orange)"
+            iconBg="rgba(230, 126, 34, 0.1)"
           />
         </div>
         
@@ -196,7 +196,21 @@ export default function DashboardPage() {
               أكثر المنتجات مبيعاً
             </h3>
             <div className="space-y-3">
-              {(stats.top_products || []).slice(0, 8).map((product: any, index: number) => (
+              {(stats.top_products || [])
+                .reduce((acc: any[], product: any) => {
+                  const productName = (product.product_name || '').trim().toLowerCase();
+                  const existing = acc.find(p => (p.product_name || '').trim().toLowerCase() === productName);
+                  if (existing) {
+                    existing.total_qty += product.total_qty || 0;
+                    existing.total_revenue += product.total_revenue || 0;
+                  } else {
+                    acc.push({ ...product });
+                  }
+                  return acc;
+                }, [])
+                .sort((a: any, b: any) => (b.total_qty || 0) - (a.total_qty || 0))
+                .slice(0, 8)
+                .map((product: any, index: number) => (
                 <div key={index} className="flex items-center justify-between pb-3 last:border-0" style={{ borderBottom: '1px solid var(--border-color)' }}>
                   <div className="flex items-center gap-2">
                     <div 
@@ -207,11 +221,11 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{product.product_name}</p>
-                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>{product.total_qty} قطعة</p>
+                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>{product.total_qty.toLocaleString('en-US')} قطعة</p>
                     </div>
                   </div>
                   <p className="text-[14px] font-bold" style={{ color: 'var(--primary)' }}>
-                    {(product.total_revenue || 0).toLocaleString('ar-EG')} ج
+                    {(product.total_revenue || 0).toLocaleString('en-US')} ج
                   </p>
                 </div>
               ))}
@@ -231,7 +245,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[21px] font-semibold transition-theme" style={{ color: 'var(--text-primary)' }}>آخر الفواتير</h3>
-              <Button variant="ghost" onClick={() => navigate('/pos')} className="text-[14px] h-auto p-2">
+              <Button variant="ghost" onClick={() => navigate('/reports')} className="text-[14px] h-auto p-2">
                 عرض الكل
               </Button>
             </div>
@@ -253,7 +267,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-left">
                     <p className="text-[14px] font-bold" style={{ color: 'var(--primary)' }}>
-                      {(invoice.total || 0).toLocaleString('ar-EG')} جنيه
+                      {(invoice.total || 0).toLocaleString('en-US')} جنيه
                     </p>
                     <p 
                       className="text-[12px] font-medium"

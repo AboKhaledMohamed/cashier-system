@@ -261,6 +261,7 @@ export interface Customer {
   credit_limit: number; // حد الدين المسموح
   credit_used: number; // المبلغ المستخدم من الحد
   credit_available: number; // الحد المتبقي = credit_limit - credit_used
+  current_balance?: number; // الرصيد الحالي (الدين المستحق)
   
   // نظام الثقة
   trust_score: number; // من 0 إلى 100
@@ -270,6 +271,7 @@ export interface Customer {
   // نقاط الولاء
   loyalty_points: number;
   
+  total_debts?: number;
   // المشتريات
   total_purchases: number; // إجمالي الشراء
   total_purchases_amount: number;

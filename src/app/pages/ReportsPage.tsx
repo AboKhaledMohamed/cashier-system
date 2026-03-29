@@ -227,7 +227,7 @@ export default function ReportsPage() {
                     <div>
                       <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الإيراد</p>
                       <p className="text-[21px] font-bold" style={{ color: 'var(--primary)' }}>
-                        {filteredRevenue.toLocaleString('ar-EG')} جنيه
+                        {filteredRevenue.toLocaleString('en-US')} جنيه
                       </p>
                     </div>
                   </div>
@@ -247,7 +247,7 @@ export default function ReportsPage() {
                     <div>
                       <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الخصومات</p>
                       <p className="text-[21px] font-bold" style={{ color: 'var(--warning)' }}>
-                        {totalDiscount.toLocaleString('ar-EG')} جنيه
+                        {totalDiscount.toLocaleString('en-US')} جنيه
                       </p>
                     </div>
                   </div>
@@ -267,7 +267,7 @@ export default function ReportsPage() {
                     <div>
                       <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>صافي الربح التقديري</p>
                       <p className="text-[21px] font-bold" style={{ color: 'var(--primary)' }}>
-                        {netProfit.toLocaleString('ar-EG')} جنيه
+                        {netProfit.toLocaleString('en-US')} جنيه
                       </p>
                     </div>
                   </div>

@@ -1,0 +1,3 @@
+C:\Users\[اسم المستخدم]\AppData\Local\smartpos\smartpos.db
+
+C:\Users\Abo_khaled\AppData\Local\smartpos

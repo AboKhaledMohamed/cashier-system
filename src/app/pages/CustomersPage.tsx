@@ -19,18 +19,7 @@ import { useShop } from '../context/ShopContext';
 import { formatCurrency, formatNumber, formatPhone } from '../utils/formatters';
 import { notify, messages } from '../utils/toast';
 import { useLocation } from 'react-router';
-import {
-  Search,
-  Plus,
-  Edit,
-  Users,
-  DollarSign,
-  TrendingUp,
-  X,
-  AlertTriangle,
-  CreditCard,
-  Lock,
-} from 'lucide-react';
+import { Search, Plus, Edit, Users, DollarSign, X, Trash2, AlertCircle, Wallet } from 'lucide-react';
 import type { Customer } from '../types/small-shop.types';
 
 const trustLevelLabels: Record<string, { label: string; color: string }> = {
@@ -51,9 +40,7 @@ export default function CustomersPage() {
   const { customers, loadCustomers, currentUser } = useShop();
   const api = (window as any).electronAPI;
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterBlacklist, setFilterBlacklist] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showCreditDialog, setShowCreditDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [showAddForm, setShowAddForm] = useState(false); // Show inline form on button click
   const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string }>({});
@@ -62,40 +49,36 @@ export default function CustomersPage() {
     name: '',
     phone: '',
     email: '',
-    credit_limit: 5000,
-    trust_level: 'average',
   });
   
-  const [creditAdjustment, setCreditAdjustment] = useState<{
-    adjustment_type: 'increase' | 'decrease' | 'pay';
-    amount: number;
-    reason: string;
-  }>({
-    adjustment_type: 'pay',
-    amount: 0,
-    reason: '',
-  });
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Reduce debt modal states
+  const [customerToReduceDebt, setCustomerToReduceDebt] = useState<Customer | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   
   // Filter customers
   const filteredCustomers = customers.filter((customer) => {
     const matchesSearch =
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       customer.phone.includes(searchQuery);
-    const matchesBlacklist = !filterBlacklist || customer.is_blacklisted;
-    return matchesSearch && matchesBlacklist;
+    return matchesSearch;
   });
   
   // Calculate stats
   const totalCustomers = customers.length;
-  const totalCredit = customers.reduce((sum, c) => sum + c.credit_used, 0);
-  const blacklistedCount = customers.filter(c => c.is_blacklisted).length;
-  const highRiskCount = customers.filter(c => 
-    c.credit_available <= (c.credit_limit * 0.2) && !c.is_blacklisted
-  ).length;
+  const totalDebt = customers.reduce((sum, c) => sum + (c.current_balance || 0), 0);
   
   const handleSave = async () => {
     const errors: { name?: string; phone?: string } = {};
-    if (!formData.name?.trim()) errors.name = 'اسم العميل مطلوب';
+    if (!formData.name?.trim()) {
+      errors.name = 'اسم العميل مطلوب';
+    } else if (!/^[\u0600-\u06FFa-zA-Z0-9\s]+$/.test(formData.name.trim())) {
+      errors.name = 'اسم العميل يجب أن يحتوي على حروف وأرقام فقط بدون رموز';
+    }
     if (!formData.phone?.trim()) errors.phone = 'رقم التليفون مطلوب';
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -119,43 +102,90 @@ export default function CustomersPage() {
     closeDialog();
   };
   
-  const handleCreditAdjustment = async () => {
-    if (!editingCustomer || creditAdjustment.amount <= 0) {
-      notify.error('يرجى إدخال مبلغ صحيح');
-      return;
-    }
-    
-    // Use Electron API for payments
-    try {
-      if (creditAdjustment.adjustment_type === 'pay') {
-        await api.payments.create({
-          payment_direction: 'تحصيل',
-          party_type: 'customer',
-          party_id: editingCustomer.id,
-          party_name: editingCustomer.name,
-          amount: creditAdjustment.amount,
-          method: 'نقدي',
-          user_id: currentUser?.id || 'user-admin-001',
-          notes: creditAdjustment.reason,
-        });
-      }
-      await loadCustomers();
-      notify.success('تم تعديل الائتمان بنجاح');
-    } catch(e: any) { notify.error(e.message); }
-    
-    setShowCreditDialog(false);
-    setCreditAdjustment({ adjustment_type: 'pay', amount: 0, reason: '' });
-  };
-  
   const openEditDialog = (customer: Customer) => {
     setEditingCustomer(customer);
     setFormData(customer);
     setShowAddDialog(true);
   };
   
-  const openCreditDialog = (customer: Customer) => {
-    setEditingCustomer(customer);
-    setShowCreditDialog(true);
+  const handleDeleteClick = (customer: Customer) => {
+    setCustomerToDelete(customer);
+  };
+
+  const confirmDelete = async () => {
+    if (!customerToDelete) return;
+    setIsDeleting(true);
+    try {
+      await api.customers.delete(customerToDelete.id);
+      notify.success('تم حذف العميل بنجاح');
+      await loadCustomers();
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في حذف العميل');
+    } finally {
+      setIsDeleting(false);
+      setCustomerToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setCustomerToDelete(null);
+  };
+  
+  // Reduce debt handlers
+  const handleReduceDebtClick = (customer: Customer) => {
+    if ((customer.current_balance || 0) <= 0) {
+      notify.error('هذا العميل لا يوجد عليه دين');
+      return;
+    }
+    setCustomerToReduceDebt(customer);
+    setPaymentAmount('');
+    setPaymentError('');
+  };
+
+  const cancelReduceDebt = () => {
+    setCustomerToReduceDebt(null);
+    setPaymentAmount('');
+    setPaymentError('');
+  };
+
+  const confirmReduceDebt = async () => {
+    if (!customerToReduceDebt) return;
+    
+    const amount = Number(paymentAmount);
+    const currentDebt = customerToReduceDebt.current_balance || 0;
+    
+    // Validation
+    if (!paymentAmount || isNaN(amount) || amount <= 0) {
+      setPaymentError('يرجى إدخال مبلغ صحيح أكبر من صفر');
+      return;
+    }
+    
+    if (amount > currentDebt) {
+      setPaymentError(`المبلغ المدخل (${amount}) أكبر من الدين الحالي (${currentDebt})`);
+      return;
+    }
+    
+    setIsProcessingPayment(true);
+    try {
+      await api.payments.create({
+        payment_direction: 'تحصيل',
+        party_type: 'customer',
+        party_id: customerToReduceDebt.id,
+        party_name: customerToReduceDebt.name,
+        amount: amount,
+        method: 'نقدي',
+        user_id: currentUser?.id,
+        notes: 'تقليل الدين - دفعة من العميل'
+      });
+      
+      notify.success(`تم تقليل الدين بمبلغ ${amount} جنيه بنجاح`);
+      await loadCustomers();
+      cancelReduceDebt();
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في تقليل الدين');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
   
   const closeDialog = () => {
@@ -166,8 +196,6 @@ export default function CustomersPage() {
       name: '',
       phone: '',
       email: '',
-      credit_limit: 5000,
-      trust_level: 'average',
     });
     setFormErrors({});
   };
@@ -205,13 +233,6 @@ export default function CustomersPage() {
           </div>
           
           <Button
-            variant={filterBlacklist ? 'danger' : 'ghost'}
-            onClick={() => setFilterBlacklist(!filterBlacklist)}
-          >
-            {filterBlacklist ? `ممنوعين (${blacklistedCount})` : 'عرض الممنوعين'}
-          </Button>
-          
-          <Button
             variant="info"
             onClick={() => setShowAddForm(!showAddForm)}
             className="flex items-center gap-2 min-w-[48px] justify-center"
@@ -236,10 +257,15 @@ export default function CustomersPage() {
               <span className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>أدخل البيانات الأساسية أولاً</span>
             </div>
             <div className="grid grid-cols-3 gap-4 mb-4">
-              <Input
+                <Input
                 label="اسم العميل *"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '' || /^[\u0600-\u06FFa-zA-Z0-9\s]*$/.test(value)) {
+                    setFormData({ ...formData, name: value });
+                  }
+                }}
                 placeholder="أدخل اسم العميل"
                 error={formErrors.name}
               />
@@ -262,19 +288,6 @@ export default function CustomersPage() {
                 value={formData.phone2}
                 onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
                 placeholder="01xxxxxxxxx (اختياري)"
-              />
-              <Input
-                label="حد الائتمان"
-                type="number"
-                value={formData.credit_limit}
-                onChange={(e) =>
-                  setFormData({ 
-                    ...formData, 
-                    credit_limit: Number(e.target.value),
-                    credit_available: Number(e.target.value) - (editingCustomer?.credit_used || 0)
-                  })
-                }
-                placeholder="5000"
               />
               <div>
                 <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>الحي/المنطقة</label>
@@ -313,7 +326,7 @@ export default function CustomersPage() {
         )}
         
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-5">
+        <div className="grid grid-cols-2 gap-5">
           <div 
             className="rounded-lg p-5 flex items-center gap-4 transition-theme"
             style={{ backgroundColor: 'var(--card-bg)' }}
@@ -338,48 +351,12 @@ export default function CustomersPage() {
               className="w-12 h-12 rounded-lg flex items-center justify-center"
               style={{ backgroundColor: 'var(--warning-bg)' }}
             >
-              <CreditCard className="w-6 h-6" style={{ color: 'var(--warning)' }} />
+              <DollarSign className="w-6 h-6" style={{ color: 'var(--warning)' }} />
             </div>
             <div>
-              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الائتمان المستخدم</p>
+              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الديون</p>
               <p className="text-[26px] font-bold" style={{ color: 'var(--warning)' }}>
-                {totalCredit.toLocaleString('ar-EG')} ج
-              </p>
-            </div>
-          </div>
-          
-          <div 
-            className="rounded-lg p-5 flex items-center gap-4 transition-theme"
-            style={{ backgroundColor: 'var(--card-bg)' }}
-          >
-            <div 
-              className="w-12 h-12 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--danger-bg)' }}
-            >
-              <AlertTriangle className="w-6 h-6" style={{ color: 'var(--danger)' }} />
-            </div>
-            <div>
-              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>خطر مالي (نسبة منخفضة)</p>
-              <p className="text-[26px] font-bold" style={{ color: 'var(--danger)' }}>
-                {highRiskCount}
-              </p>
-            </div>
-          </div>
-          
-          <div 
-            className="rounded-lg p-5 flex items-center gap-4 transition-theme"
-            style={{ backgroundColor: 'var(--card-bg)' }}
-          >
-            <div 
-              className="w-12 h-12 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--danger-bg)' }}
-            >
-              <Lock className="w-6 h-6" style={{ color: 'var(--danger)' }} />
-            </div>
-            <div>
-              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>عملاء ممنوعين</p>
-              <p className="text-[26px] font-bold" style={{ color: 'var(--danger)' }}>
-                {blacklistedCount}
+                {totalDebt.toLocaleString('en-US')} ج
               </p>
             </div>
           </div>
@@ -387,7 +364,7 @@ export default function CustomersPage() {
         
         {/* Customers Table */}
         <div 
-          className="rounded-lg overflow-hidden transition-theme"
+          className="rounded-lg overflow-hidden transition-theme overflow-x-auto"
           style={{ backgroundColor: 'var(--card-bg)' }}
         >
           <div 
@@ -397,14 +374,11 @@ export default function CustomersPage() {
               color: 'var(--text-muted)'
             }}
           >
-            <div className="col-span-2">الاسم</div>
+            <div className="col-span-3">الاسم</div>
             <div className="col-span-2">التليفون</div>
-            <div className="col-span-1 text-center">المستخدم</div>
-            <div className="col-span-1 text-center">المتاح</div>
-            <div className="col-span-1 text-center">الحد</div>
-            <div className="col-span-2">الثقة</div>
-            <div className="col-span-2">الحالة</div>
-            <div className="col-span-1 text-center">الإجراء</div>
+            <div className="col-span-2 text-center">الدين الحالي</div>
+            <div className="col-span-3">العنوان</div>
+            <div className="col-span-2 text-center">الإجراء</div>
           </div>
           
           <div 
@@ -418,37 +392,24 @@ export default function CustomersPage() {
               </div>
             ) : (
               filteredCustomers.map((customer) => {
-                const trustColor = customer.trust_level === 'excellent' ? 'var(--primary)' 
-                  : customer.trust_level === 'good' ? 'var(--info)'
-                  : customer.trust_level === 'average' ? 'var(--warning)'
-                  : customer.trust_level === 'poor' ? 'var(--accent-orange)'
-                  : 'var(--danger)';
-                
                 return (
                   <div
                     key={customer.id}
                     className="grid grid-cols-12 gap-4 p-4 items-center transition-all"
-                    style={{
-                      backgroundColor: customer.is_blacklisted ? 'var(--danger-bg)' : 'transparent',
-                      opacity: customer.is_blacklisted ? 0.6 : 1
-                    }}
+                    style={{ backgroundColor: 'transparent' }}
                     onMouseEnter={(e) => {
-                      if (!customer.is_blacklisted) {
-                        e.currentTarget.style.backgroundColor = 'var(--surface-1)';
-                      }
+                      e.currentTarget.style.backgroundColor = 'var(--surface-1)';
                     }}
                     onMouseLeave={(e) => {
-                      if (!customer.is_blacklisted) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }
+                      e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
-                    <div className="col-span-2">
+                    <div className="col-span-3">
                       <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>
                         {customer.name}
                       </p>
                       <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>
-                        {customer.address?.area || customer.address?.street || 'بدون عنوان'}
+                        {customer.email || 'بدون بريد'}
                       </p>
                     </div>
                     <div className="col-span-2">
@@ -456,79 +417,38 @@ export default function CustomersPage() {
                         {customer.phone}
                       </p>
                     </div>
-                    <div className="col-span-1 text-center">
-                      <p className="text-[14px] font-bold" style={{ color: 'var(--warning)' }}>
-                        {formatCurrency(customer.credit_used)}
-                      </p>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      <p className="text-[14px] font-bold" style={{
-                        color: customer.credit_available > 500 ? 'var(--primary)' 
-                          : customer.credit_available > 0 ? 'var(--accent-orange)'
-                          : 'var(--danger)'
+                    <div className="col-span-2 text-center">
+                      <p className="text-[14px] font-bold" style={{ 
+                        color: (customer.current_balance || 0) > 0 ? 'var(--warning)' : 'var(--primary)' 
                       }}>
-                        {formatCurrency(customer.credit_available)}
+                        {formatCurrency(customer.current_balance || 0)}
                       </p>
                     </div>
-                    <div className="col-span-1 text-center">
+                    <div className="col-span-3">
                       <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>
-                        {formatCurrency(customer.credit_limit)}
+                        {customer.address?.area || customer.address?.street || 'بدون عنوان'}
                       </p>
                     </div>
-                    <div className="col-span-2">
-                      <span className="px-3 py-1 rounded-full text-[12px] font-medium" style={{ 
-                        color: trustColor, 
-                        backgroundColor: `${trustColor}20` 
-                      }}>
-                        {trustLevelLabels[customer.trust_level]?.label || customer.trust_level}
-                      </span>
-                    </div>
-                    <div className="col-span-2 flex items-center gap-2">
-                      {customer.is_blacklisted && (
-                        <span 
-                          className="px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1"
-                          style={{ 
-                            backgroundColor: 'var(--danger-bg)', 
-                            color: 'var(--danger)' 
-                          }}
-                        >
-                          <Lock className="w-3 h-3" />
-                          ممنوع
-                        </span>
-                      )}
-                      {customer.credit_available <= (customer.credit_limit * 0.2) && !customer.is_blacklisted && (
-                        <span 
-                          className="px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1"
-                          style={{ 
-                            backgroundColor: 'var(--warning-bg)', 
-                            color: 'var(--warning)' 
-                          }}
-                        >
-                          <AlertTriangle className="w-3 h-3" />
-                          خطر
-                        </span>
-                      )}
-                    </div>
-                    <div className="col-span-1 text-center">
+                    <div className="col-span-2 text-center">
                       <div className="flex gap-1 justify-center">
                         <button
-                          onClick={() => openCreditDialog(customer)}
-                          title="ضبط الائتمان"
+                          onClick={() => handleReduceDebtClick(customer)}
+                          title="تقليل الدين"
                           className="w-8 h-8 rounded flex items-center justify-center transition-all"
                           style={{ 
-                            backgroundColor: 'var(--warning-bg)', 
-                            color: 'var(--warning)' 
+                            backgroundColor: 'var(--success-bg)', 
+                            color: 'var(--success)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--warning)';
+                            e.currentTarget.style.backgroundColor = 'var(--success)';
                             e.currentTarget.style.color = 'white';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--warning-bg)';
-                            e.currentTarget.style.color = 'var(--warning)';
+                            e.currentTarget.style.backgroundColor = 'var(--success-bg)';
+                            e.currentTarget.style.color = 'var(--success)';
                           }}
                         >
-                          <CreditCard className="w-4 h-4" />
+                          <Wallet className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openEditDialog(customer)}
@@ -548,6 +468,25 @@ export default function CustomersPage() {
                           }}
                         >
                           <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(customer)}
+                          title="حذف العميل"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          style={{ 
+                            backgroundColor: 'var(--danger-bg)', 
+                            color: 'var(--danger)' 
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--danger)';
+                            e.currentTarget.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                            e.currentTarget.style.color = 'var(--danger)';
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -590,7 +529,12 @@ export default function CustomersPage() {
                 <Input
                   label="اسم العميل *"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '' || /^[\u0600-\u06FFa-zA-Z0-9\s]*$/.test(value)) {
+                      setFormData({ ...formData, name: value });
+                    }
+                  }}
                   placeholder="أدخل اسم العميل"
                 />
                 <Input
@@ -611,19 +555,6 @@ export default function CustomersPage() {
                   value={formData.phone2}
                   onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
                   placeholder="01xxxxxxxxx (اختياري)"
-                />
-                <Input
-                  label="حد الائتمان"
-                  type="number"
-                  value={formData.credit_limit}
-                  onChange={(e) =>
-                    setFormData({ 
-                      ...formData, 
-                      credit_limit: Number(e.target.value),
-                      credit_available: Number(e.target.value) - (editingCustomer?.credit_used || 0)
-                    })
-                  }
-                  placeholder="5000"
                 />
               </div>
               
@@ -651,7 +582,7 @@ export default function CustomersPage() {
               <div>
                 <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>ملاحظات</label>
                 <textarea
-                  value={formData.notes}
+                  value={formData.notes || ''}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="ملاحظات عن العميل (اختياري)"
                   className="w-full h-[80px] rounded-lg px-3 py-2 outline-none resize-none transition-theme"
@@ -681,147 +612,77 @@ export default function CustomersPage() {
         </div>
       )}
       
-      {/* Credit Adjustment Dialog */}
-      {showCreditDialog && editingCustomer && (
+      {/* Reduce Debt Modal */}
+      {customerToReduceDebt && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-50"
           style={{ backgroundColor: 'var(--overlay-bg)' }}
         >
           <div 
-            className="w-full max-w-[600px] rounded-lg overflow-hidden transition-theme"
+            className="w-full max-w-[400px] rounded-lg overflow-hidden transition-theme"
             style={{ backgroundColor: 'var(--card-bg)' }}
           >
             <div 
-              className="p-4 flex items-center justify-between"
-              style={{ backgroundColor: 'var(--warning)' }}
+              className="p-4 flex items-center justify-center"
+              style={{ backgroundColor: 'var(--success)' }}
             >
-              <div>
-                <h3 className="text-[21px] font-bold" style={{ color: 'white' }}>ضبط الائتمان</h3>
-                <p className="text-[14px]" style={{ color: 'rgba(255,255,255,0.8)' }}>{editingCustomer.name}</p>
-              </div>
-              <button
-                onClick={() => setShowCreditDialog(false)}
-                className="w-8 h-8 bg-white/20 rounded hover:bg-white/30 flex items-center justify-center"
-              >
-                <X className="w-5 h-5" style={{ color: 'white' }} />
-              </button>
+              <Wallet className="w-8 h-8 text-white" />
             </div>
-            
-            <div className="p-6 space-y-4">
-              {/* Credit Info */}
-              <div 
-                className="grid grid-cols-3 gap-4 p-4 rounded-lg transition-theme"
-                style={{ backgroundColor: 'var(--surface-1)' }}
-              >
-                <div className="text-center">
-                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>المستخدم</p>
-                  <p className="text-[20px] font-bold" style={{ color: 'var(--warning)' }}>
-                    {formatCurrency(editingCustomer.credit_used)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>المتاح</p>
-                  <p className="text-[20px] font-bold" style={{
-                    color: editingCustomer.credit_available > 500 ? 'var(--primary)'
-                      : editingCustomer.credit_available > 0 ? 'var(--accent-orange)'
-                      : 'var(--danger)'
-                  }}>
-                    {formatCurrency(editingCustomer.credit_available)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>الحد الأقصى</p>
-                  <p className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                    {formatCurrency(editingCustomer.credit_limit)}
-                  </p>
-                </div>
-              </div>
+            <div className="p-6">
+              <h3 className="text-[18px] font-bold mb-2 transition-theme text-center" style={{ color: 'var(--text-primary)' }}>
+                تقليل الدين
+              </h3>
+              <p className="text-[14px] mb-4 transition-theme text-center" style={{ color: 'var(--text-muted)' }}>
+                العميل: {customerToReduceDebt.name}
+              </p>
+              <p className="text-[14px] mb-4 transition-theme text-center" style={{ color: 'var(--warning)' }}>
+                الدين الحالي: {formatCurrency(customerToReduceDebt.current_balance || 0)}
+              </p>
               
-              {/* Adjustment Type */}
-              <div>
-                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>نوع التعديل</label>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setCreditAdjustment({ ...creditAdjustment, adjustment_type: 'pay' })}
-                    className="flex-1 h-[44px] rounded-lg font-medium transition-all"
-                    style={{
-                      backgroundColor: creditAdjustment.adjustment_type === 'pay' ? 'var(--primary)' : 'var(--primary-light)',
-                      color: creditAdjustment.adjustment_type === 'pay' ? 'white' : 'var(--primary)'
-                    }}
-                  >
-                    دفع (تقليل الدين)
-                  </button>
-                  <button
-                    onClick={() => setCreditAdjustment({ ...creditAdjustment, adjustment_type: 'increase' })}
-                    className="flex-1 h-[44px] rounded-lg font-medium transition-all"
-                    style={{
-                      backgroundColor: creditAdjustment.adjustment_type === 'increase' ? 'var(--warning)' : 'var(--warning-bg)',
-                      color: creditAdjustment.adjustment_type === 'increase' ? 'white' : 'var(--warning)'
-                    }}
-                  >
-                    زيادة ائتمان
-                  </button>
-                  <button
-                    onClick={() => setCreditAdjustment({ ...creditAdjustment, adjustment_type: 'decrease' })}
-                    className="flex-1 h-[44px] rounded-lg font-medium transition-all"
-                    style={{
-                      backgroundColor: creditAdjustment.adjustment_type === 'decrease' ? 'var(--danger)' : 'var(--danger-bg)',
-                      color: creditAdjustment.adjustment_type === 'decrease' ? 'white' : 'var(--danger)'
-                    }}
-                  >
-                    تقليل ائتمان
-                  </button>
-                </div>
-              </div>
-              
-              {/* Amount */}
-              <Input
-                label={`المبلغ (${
-                  creditAdjustment.adjustment_type === 'pay' ? 'الدفع' :
-                  creditAdjustment.adjustment_type === 'increase' ? 'الزيادة' :
-                  'التقليل'
-                }) *`}
-                type="number"
-                value={creditAdjustment.amount}
-                onChange={(e) => setCreditAdjustment({ ...creditAdjustment, amount: Number(e.target.value) })}
-                placeholder="0"
-              />
-              
-              {/* Reason */}
-              <div>
-                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>السبب</label>
-                <textarea
-                  value={creditAdjustment.reason}
-                  onChange={(e) => setCreditAdjustment({ ...creditAdjustment, reason: e.target.value })}
-                  placeholder="سبب التعديل (اختياري)"
-                  className="w-full h-[80px] rounded-lg px-3 py-2 outline-none resize-none transition-theme"
+              <div className="mb-4">
+                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  مبلغ الدفعة
+                </label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => {
+                    setPaymentAmount(e.target.value);
+                    setPaymentError('');
+                  }}
+                  placeholder="أدخل المبلغ"
+                  className="w-full h-[44px] rounded-lg px-3 outline-none transition-theme"
                   style={{
                     backgroundColor: 'var(--input-bg)',
                     color: 'var(--text-primary)',
-                    border: '1px solid var(--border-color)'
+                    border: paymentError ? '1px solid var(--danger)' : '1px solid var(--border-color)'
                   }}
                 />
+                {paymentError && (
+                  <p className="text-[12px] mt-1" style={{ color: 'var(--danger)' }}>
+                    {paymentError}
+                  </p>
+                )}
               </div>
-            </div>
-            
-            <div 
-              className="p-4 flex gap-3 transition-theme"
-              style={{ backgroundColor: 'var(--surface-1)' }}
-            >
-              <Button 
-                variant="ghost" 
-                onClick={() => setShowCreditDialog(false)}
-                fullWidth
-              >
-                إلغاء
-              </Button>
-              <Button 
-                variant="warning" 
-                onClick={handleCreditAdjustment}
-                fullWidth
-              >
-                تطبيق التعديل
-              </Button>
+              
+              <div className="flex gap-3">
+                <Button 
+                  variant="ghost" 
+                  onClick={cancelReduceDebt} 
+                  fullWidth 
+                  disabled={isProcessingPayment}
+                >
+                  إلغاء
+                </Button>
+                <Button 
+                  variant="success" 
+                  onClick={confirmReduceDebt} 
+                  fullWidth 
+                  disabled={isProcessingPayment}
+                >
+                  {isProcessingPayment ? 'جاري المعالجة...' : 'تأكيد الدفعة'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

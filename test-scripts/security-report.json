@@ -1,0 +1,361 @@
+{
+  "critical": 0,
+  "high": 0,
+  "medium": 0,
+  "low": 0,
+  "info": 15,
+  "tests": [
+    {
+      "category": "A01",
+      "test": "Default Admin Account",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Admin account exists - ensure strong password policy enforced",
+      "remediation": "Enforce password complexity and MFA"
+    },
+    {
+      "category": "A01",
+      "test": "IDOR Check",
+      "severity": "MEDIUM",
+      "status": "INFO",
+      "detail": "Latest invoice: inv-mnb3vtqz-f0... - Verify authorization checks",
+      "remediation": ""
+    },
+    {
+      "category": "A01",
+      "test": "Role Distribution: admin",
+      "severity": "INFO",
+      "status": "INFO",
+      "detail": "1 users with role admin",
+      "remediation": ""
+    },
+    {
+      "category": "A02",
+      "test": "Password Column",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Using password_hash column (correct)",
+      "remediation": ""
+    },
+    {
+      "category": "A02",
+      "test": "Password Storage",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "No plaintext passwords detected in sample",
+      "remediation": ""
+    },
+    {
+      "category": "A02",
+      "test": "Sensitive Data Encryption",
+      "severity": "HIGH",
+      "status": "INFO",
+      "detail": "Verify encryption for tax_number, pin_code, and other PII",
+      "remediation": ""
+    },
+    {
+      "category": "A02",
+      "test": "DB Encryption Check",
+      "severity": "MEDIUM",
+      "status": "INFO",
+      "detail": "Could not verify database encryption",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: ' OR '1'='1...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: '; DROP TABLE produc...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: ' UNION SELECT * FRO...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: 1 AND 1=1...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: 1 AND 1=2...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: 1' AND '1'='1...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: 1' AND '1'='2...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: admin'--...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: admin'/*...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Input Sanitization: admin' OR '1'='1'/*...",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "Input properly sanitized",
+      "remediation": ""
+    },
+    {
+      "category": "A03",
+      "test": "Dynamic SQL in expenses.js",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Potential dynamic SQL detected in expenses.js",
+      "remediation": "Convert to parameterized queries"
+    },
+    {
+      "category": "A03",
+      "test": "Dynamic SQL in inventory.js",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Potential dynamic SQL detected in inventory.js",
+      "remediation": "Convert to parameterized queries"
+    },
+    {
+      "category": "A03",
+      "test": "Dynamic SQL in invoices.js",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Potential dynamic SQL detected in invoices.js",
+      "remediation": "Convert to parameterized queries"
+    },
+    {
+      "category": "A03",
+      "test": "Dynamic SQL in payments.js",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Potential dynamic SQL detected in payments.js",
+      "remediation": "Convert to parameterized queries"
+    },
+    {
+      "category": "A03",
+      "test": "Dynamic SQL in purchases.js",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Potential dynamic SQL detected in purchases.js",
+      "remediation": "Convert to parameterized queries"
+    },
+    {
+      "category": "A03",
+      "test": "Dynamic SQL in returns.js",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "Potential dynamic SQL detected in returns.js",
+      "remediation": "Convert to parameterized queries"
+    },
+    {
+      "category": "A04",
+      "test": "Business Logic: Balance Validation",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "No negative balances found",
+      "remediation": ""
+    },
+    {
+      "category": "A05",
+      "test": "Default Configuration",
+      "severity": "MEDIUM",
+      "status": "INFO",
+      "detail": "Shop settings exist - verify not using defaults for production",
+      "remediation": ""
+    },
+    {
+      "category": "A05",
+      "test": "Test/Demo Accounts",
+      "severity": "HIGH",
+      "status": "WARN",
+      "detail": "1 potential test accounts found: admin",
+      "remediation": "Remove test accounts before production deployment"
+    },
+    {
+      "category": "A05",
+      "test": "Database File Permissions",
+      "severity": "INFO",
+      "status": "INFO",
+      "detail": "DB file size: 0.44 MB",
+      "remediation": ""
+    },
+    {
+      "category": "A06",
+      "test": "Dependency: electron@33.4.11",
+      "severity": "INFO",
+      "status": "INFO",
+      "detail": "Verify electron is up to date (min: 22.0.0)",
+      "remediation": "Run 'npm audit' and update to latest version"
+    },
+    {
+      "category": "A06",
+      "test": "Dependency: better-sqlite3@11.10.0",
+      "severity": "INFO",
+      "status": "INFO",
+      "detail": "Verify better-sqlite3 is up to date (min: 8.0.0)",
+      "remediation": "Run 'npm audit' and update to latest version"
+    },
+    {
+      "category": "A06",
+      "test": "Dependency Check",
+      "severity": "INFO",
+      "status": "INFO",
+      "detail": "Run \"npm audit\" for detailed vulnerability report",
+      "remediation": ""
+    },
+    {
+      "category": "A07",
+      "test": "Session Management",
+      "severity": "HIGH",
+      "status": "INFO",
+      "detail": "Verify session timeout and secure cookie settings in Electron app",
+      "remediation": ""
+    },
+    {
+      "category": "A08",
+      "test": "Invoice Items without Invoice",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "No orphaned records",
+      "remediation": ""
+    },
+    {
+      "category": "A08",
+      "test": "Payments without Customer",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "No orphaned records",
+      "remediation": ""
+    },
+    {
+      "category": "A08",
+      "test": "Stock Movements without Product",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "No orphaned records",
+      "remediation": ""
+    },
+    {
+      "category": "A08",
+      "test": "Balance Consistency",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "All customer balances are consistent",
+      "remediation": ""
+    },
+    {
+      "category": "A09",
+      "test": "Audit: بيع_جديد",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "11 events logged (30 days)",
+      "remediation": ""
+    },
+    {
+      "category": "A09",
+      "test": "Missing Audit: إلغاء_فاتورة",
+      "severity": "MEDIUM",
+      "status": "WARN",
+      "detail": "Critical action not found in audit log",
+      "remediation": "Ensure all إلغاء_فاتورة actions are logged"
+    },
+    {
+      "category": "A09",
+      "test": "Audit: تسجيل_دخول",
+      "severity": "INFO",
+      "status": "PASS",
+      "detail": "22 events logged (30 days)",
+      "remediation": ""
+    },
+    {
+      "category": "A09",
+      "test": "Missing Audit: حذف_منتج",
+      "severity": "MEDIUM",
+      "status": "WARN",
+      "detail": "Critical action not found in audit log",
+      "remediation": "Ensure all حذف_منتج actions are logged"
+    },
+    {
+      "category": "A09",
+      "test": "Sensitive Data in Logs",
+      "severity": "HIGH",
+      "status": "INFO",
+      "detail": "Manually verify no passwords, PINs, or credit cards in audit_log",
+      "remediation": ""
+    },
+    {
+      "category": "A09",
+      "test": "Log Retention",
+      "severity": "INFO",
+      "status": "INFO",
+      "detail": "Audit logs retained for 0 days",
+      "remediation": ""
+    },
+    {
+      "category": "A10",
+      "test": "Error Information Disclosure",
+      "severity": "MEDIUM",
+      "status": "INFO",
+      "detail": "Verify error messages do not expose stack traces or SQL details to users",
+      "remediation": ""
+    },
+    {
+      "category": "A10",
+      "test": "Exception Handling",
+      "severity": "MEDIUM",
+      "status": "INFO",
+      "detail": "Ensure all IPC handlers have try-catch blocks",
+      "remediation": ""
+    },
+    {
+      "category": "A10",
+      "test": "SSRF Prevention",
+      "severity": "LOW",
+      "status": "INFO",
+      "detail": "If app makes HTTP requests, validate and sanitize all URLs",
+      "remediation": ""
+    }
+  ]
+}

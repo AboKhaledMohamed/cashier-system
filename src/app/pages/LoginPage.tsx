@@ -172,7 +172,7 @@ export default function LoginPage() {
                       setNewPassword(e.target.value);
                       setPasswordError('');
                     }}
-                    size="large"
+                    inputSize="large"
                   />
                   <button
                     type="button"
@@ -194,7 +194,7 @@ export default function LoginPage() {
                       setConfirmPassword(e.target.value);
                       setPasswordError('');
                     }}
-                    size="large"
+                    inputSize="large"
                   />
                   <button
                     type="button"
@@ -316,7 +316,7 @@ export default function LoginPage() {
                     setUsername(e.target.value);
                     setError('');
                   }}
-                  size="large"
+                  inputSize="large"
                 />
                 
                 <div className="relative">
@@ -329,7 +329,7 @@ export default function LoginPage() {
                       setPassword(e.target.value);
                       setError('');
                     }}
-                    size="large"
+                    inputSize="large"
                   />
                   <button
                     type="button"

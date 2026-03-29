@@ -49,7 +49,7 @@ export default function ExpensesPage() {
   
   const [formData, setFormData] = useState<Partial<Expense>>({
     date: new Date().toISOString().split('T')[0],
-    time: new Date().toLocaleTimeString('ar-EG', { hour12: false }).slice(0, 5),
+    time: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
     category: 'supplies',
     amount: 0,
     description: '',
@@ -133,7 +133,7 @@ export default function ExpensesPage() {
     setShowAddDialog(false);
     setFormData({
       date: new Date().toISOString().split('T')[0],
-      time: new Date().toLocaleTimeString('ar-EG', { hour12: false }).slice(0, 5),
+      time: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
       category: 'supplies',
       amount: 0,
       description: '',
@@ -226,7 +226,7 @@ export default function ExpensesPage() {
             <div>
               <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي المصاريف</p>
               <p className="text-[26px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                {totalExpenses.toLocaleString('ar-EG')}
+                {totalExpenses.toLocaleString('en-US')}
               </p>
             </div>
           </div>
@@ -283,7 +283,7 @@ export default function ExpensesPage() {
                       {expenseCategoryLabels[item.category].label}
                     </span>
                     <span className="font-semibold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                      {item.total.toLocaleString('ar-EG')}
+                      {item.total.toLocaleString('en-US')}
                     </span>
                   </div>
                 ))}
@@ -293,7 +293,7 @@ export default function ExpensesPage() {
         
         {/* Expenses List */}
         <div 
-          className="rounded-lg overflow-hidden transition-theme"
+          className="rounded-lg overflow-hidden transition-theme overflow-x-auto"
           style={{ backgroundColor: 'var(--card-bg)' }}
         >
           <div 
@@ -362,7 +362,7 @@ export default function ExpensesPage() {
                     
                     <div className="col-span-1 text-center">
                       <p className="text-[16px] font-bold" style={{ color: 'var(--danger)' }}>
-                        {expense.amount.toLocaleString('ar-EG')} ج
+                        {expense.amount.toLocaleString('en-US')} ج
                       </p>
                     </div>
                     

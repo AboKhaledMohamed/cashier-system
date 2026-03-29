@@ -5,7 +5,7 @@
  */
 export function formatCurrency(amount: number | undefined | null): string {
   if (amount === undefined || amount === null) return '-';
-  return `${amount.toLocaleString('ar-EG')} جنيه`;
+  return `${amount.toLocaleString('en-US')} جنيه`;
 }
 
 /**
@@ -13,7 +13,7 @@ export function formatCurrency(amount: number | undefined | null): string {
  */
 export function formatNumber(num: number | undefined | null): string {
   if (num === undefined || num === null) return '-';
-  return num.toLocaleString('ar-EG');
+  return num.toLocaleString('en-US');
 }
 
 /**
@@ -68,9 +68,9 @@ export function formatPhone(phone: string | undefined | null): string {
  */
 export function formatQuantity(qty: number, allowDecimal = false): string {
   if (allowDecimal) {
-    return qty.toLocaleString('ar-EG', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+    return qty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
   }
-  return Math.round(qty).toLocaleString('ar-EG');
+  return Math.round(qty).toLocaleString('en-US');
 }
 
 /**

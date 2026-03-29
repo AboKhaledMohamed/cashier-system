@@ -8,7 +8,7 @@ import { useShop } from '../context/ShopContext';
 import type { Supplier } from '../types/small-shop.types';
 
 export default function PurchasesPage() {
-  const { suppliers, products, currentSession } = useShop();
+  const { suppliers, products, currentSession, loadSuppliers } = useShop();
   const api = (window as any).electronAPI;
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'list' | 'new'>('list');
@@ -39,6 +39,13 @@ export default function PurchasesPage() {
   // Purchase list state
   const [purchasesList, setPurchasesList] = useState<any[]>([]);
   
+  // Details modal state
+  const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  
+  // Delete confirmation state
+  const [purchaseToDelete, setPurchaseToDelete] = useState<string | null>(null);
+  
   // Load purchases list
   const loadPurchases = async () => {
     try {
@@ -47,6 +54,45 @@ export default function PurchasesPage() {
     } catch (e: any) {
       console.error(e);
       notify.error('فشل تحميل الفواتير');
+    }
+  };
+
+  // View purchase details
+  const handleViewDetails = async (purchase: any) => {
+    try {
+      const fullPurchase = await api.purchases.getById(purchase.id);
+      setSelectedPurchase(fullPurchase);
+      setShowDetailsModal(true);
+    } catch (e: any) {
+      notify.error('فشل تحميل تفاصيل الفاتورة');
+    }
+  };
+
+  // Delete purchase
+  const handleDeletePurchase = async () => {
+    if (!purchaseToDelete) return;
+    try {
+      console.log('Frontend: Deleting purchase:', purchaseToDelete);
+      
+      // Call the delete API and wait for it to complete
+      const result = await api.purchases.delete(purchaseToDelete);
+      console.log('Frontend: Delete API result:', result);
+      
+      // Clear the delete confirmation state first
+      setPurchaseToDelete(null);
+      
+      // Reload the list
+      console.log('Frontend: Reloading purchases list...');
+      await loadPurchases();
+      console.log('Frontend: List reloaded');
+      
+      // Show success message ONLY after everything is done
+      notify.success('تم حذف الفاتورة بنجاح');
+      
+    } catch (e: any) {
+      console.error('Frontend: Delete error:', e);
+      notify.error(e.message || e.error || 'فشل حذف الفاتورة');
+      setPurchaseToDelete(null);
     }
   };
 
@@ -59,8 +105,11 @@ export default function PurchasesPage() {
     }
   }, [activeTab]);
   
-  // Payment type state
-  const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
+  // Payment type state - only cash and credit
+  const [paymentType, setPaymentType] = useState<'cash' | 'credit'>('cash');
+  
+  // Credit paid amount (when payment type is credit)
+  const [creditPaidAmount, setCreditPaidAmount] = useState(0);
   
   // Product search results
   const productResults = productSearch.trim() && products
@@ -77,8 +126,7 @@ export default function PurchasesPage() {
   // Calculate remaining based on payment type for display
   const displayRemaining = 
     paymentType === 'cash' ? 0 :
-    paymentType === 'credit' ? total :
-    total - paid;
+    paymentType === 'credit' ? total - creditPaidAmount : 0;
 
   const addItem = (product: any) => {
     const existingItem = items.find((item) => item.productId === product.id);
@@ -198,37 +246,43 @@ export default function PurchasesPage() {
     const finalTotal = subtotal - discountAmount;
     
     // Determine payment based on payment type
-    let actualPaid = paid;
-    let paymentStatus: string = 'paid';
+    let actualPaid = 0;
+    let paymentStatus: string = 'unpaid';
     
     if (paymentType === 'cash') {
       actualPaid = finalTotal;
       paymentStatus = 'paid';
     } else if (paymentType === 'credit') {
-      actualPaid = 0;
-      paymentStatus = 'unpaid';
-    } else if (paymentType === 'partial') {
-      actualPaid = paid;
-      paymentStatus = actualPaid >= finalTotal ? 'paid' : (actualPaid > 0 ? 'partial' : 'unpaid');
+      actualPaid = creditPaidAmount;
+      if (creditPaidAmount >= finalTotal) {
+        paymentStatus = 'paid';
+      } else if (creditPaidAmount > 0) {
+        paymentStatus = 'partial';
+      } else {
+        paymentStatus = 'unpaid';
+      }
     }
     
     const purchaseData = {
       supplier_id: selectedSupplierId,
+      supplier_name: supplier,
       session_id: currentSession?.id,
       payment_type: paymentType,
       payment_status: paymentStatus,
-      total_amount: subtotal,
+      total: finalTotal,
+      subtotal: subtotal,
       discount_amount: discountAmount,
       tax_amount: 0,
-      net_amount: finalTotal,
-      paid_amount: actualPaid,
+      paid: actualPaid,
+      remaining: finalTotal - actualPaid,
       notes: '',
       items: items.map(item => ({
         product_id: item.productId.startsWith('manual-') ? null : item.productId,
         product_name: item.productName,
-        quantity: item.quantity,
-        unit_cost: item.price,
-        total_cost: item.total
+        qty: item.quantity,
+        unit: 'piece',
+        unit_price: item.price,
+        total: item.total
       }))
     };
     
@@ -238,6 +292,8 @@ export default function PurchasesPage() {
       resetForm();
       setActiveTab('list');
       loadPurchases();
+      // Refresh suppliers to show updated debt
+      await loadSuppliers();
     } catch (e: any) {
       notify.error(e.message || 'حدث خطأ أثناء حفظ الفاتورة');
     }
@@ -252,6 +308,7 @@ export default function PurchasesPage() {
     setItems([]);
     setDiscount(0);
     setPaid(0);
+    setCreditPaidAmount(0);
     setPaymentType('cash');
     setShowAddSupplierForm(false);
     setNewSupplierName('');
@@ -422,10 +479,9 @@ export default function PurchasesPage() {
                         value={supplier}
                         onChange={(e) => {
                           setSupplier(e.target.value);
-                          setShowSupplierDropdown(true);
+                          setShowSupplierDropdown(e.target.value.trim().length > 0);
                         }}
-                        onFocus={() => setShowSupplierDropdown(true)}
-                        placeholder="اختر أو أدخل اسم المورد"
+                        placeholder="ابحث عن مورد..."
                         className="w-full h-[44px] rounded-lg px-3 text-[14px] outline-none transition-theme"
                         style={{
                           backgroundColor: 'var(--surface-1)',
@@ -434,8 +490,8 @@ export default function PurchasesPage() {
                         }}
                       />
                       
-                      {/* Supplier Dropdown */}
-                      {showSupplierDropdown && suppliers.length > 0 && (
+                      {/* Supplier Dropdown - only shows when searching */}
+                      {showSupplierDropdown && supplier.trim() && suppliers.length > 0 && (
                         <div 
                           className="absolute z-10 w-full mt-2 rounded-lg shadow-xl max-h-[250px] overflow-y-auto transition-theme"
                           style={{
@@ -606,7 +662,7 @@ export default function PurchasesPage() {
 
               {/* Items Table */}
               <div 
-                className="rounded-xl overflow-hidden transition-theme"
+                className="rounded-xl overflow-hidden transition-theme overflow-x-auto"
                 style={{ backgroundColor: 'var(--card-bg)' }}
               >
                 {/* Table Header */}
@@ -746,16 +802,6 @@ export default function PurchasesPage() {
                       >
                         آجل
                       </button>
-                      <button
-                        onClick={() => setPaymentType('partial')}
-                        className="flex-1 py-2 rounded-lg text-[14px] font-medium transition-all"
-                        style={{
-                          backgroundColor: paymentType === 'partial' ? 'var(--warning)' : 'var(--surface-1)',
-                          color: paymentType === 'partial' ? '#1A1A2E' : 'var(--text-muted)'
-                        }}
-                      >
-                        جزئي
-                      </button>
                     </div>
                   </div>
 
@@ -785,14 +831,14 @@ export default function PurchasesPage() {
                     </div>
                   </div>
 
-                  {/* Paid - Only show for partial payment */}
-                  {paymentType === 'partial' && (
+                  {/* Paid Amount - Show for credit payment */}
+                  {paymentType === 'credit' && (
                     <div className="flex justify-between items-center">
-                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>المدفوع:</span>
+                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>المبلغ المدفوع:</span>
                       <input
                         type="number"
-                        value={paid}
-                        onChange={(e) => setPaid(Number(e.target.value) || 0)}
+                        value={creditPaidAmount}
+                        onChange={(e) => setCreditPaidAmount(Math.max(0, Number(e.target.value) || 0))}
                         className="w-[100px] h-[32px] rounded px-2 text-right text-[14px] outline-none transition-theme"
                         style={{
                           backgroundColor: 'var(--surface-1)',
@@ -812,11 +858,11 @@ export default function PurchasesPage() {
                     <span className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>{formatCurrency(total)}</span>
                   </div>
 
-                  {/* Remaining - Show only for credit and partial payments */}
-                  {paymentType !== 'cash' && displayRemaining > 0 && (
+                  {/* Remaining - Show only for credit payment */}
+                  {paymentType === 'credit' && displayRemaining > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-[14px]" style={{ color: 'var(--danger)' }}>
-                        {paymentType === 'credit' ? 'دين على المورد:' : 'مستحق للمورد:'}
+                        باقي الدين على المحل:
                       </span>
                       <span className="text-[18px] font-bold" style={{ color: 'var(--danger)' }}>{formatCurrency(displayRemaining)}</span>
                     </div>
@@ -952,7 +998,7 @@ export default function PurchasesPage() {
         {/* Purchase List */}
         {activeTab === 'list' && (
           <div 
-            className="rounded-xl overflow-hidden transition-theme"
+            className="rounded-xl overflow-hidden transition-theme overflow-x-auto"
             style={{ backgroundColor: 'var(--card-bg)' }}
           >
             <div 
@@ -963,11 +1009,11 @@ export default function PurchasesPage() {
               }}
             >
               <div className="col-span-2">رقم الفاتورة</div>
-              <div className="col-span-3">المورد</div>
+              <div className="col-span-2">المورد</div>
               <div className="col-span-2">التاريخ</div>
               <div className="col-span-2 text-center">الإجمالي</div>
               <div className="col-span-2 text-center">الحالة</div>
-              <div className="col-span-1 text-center">تفاصيل</div>
+              <div className="col-span-2 text-center">إجراءات</div>
             </div>
             <div 
               className="divide-y transition-theme"
@@ -983,16 +1029,16 @@ export default function PurchasesPage() {
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <div className="col-span-2">
-                      <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{purchase.invoice_number}</p>
+                      <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{purchase.purchase_number || purchase.invoice_number}</p>
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <p className="text-[14px] transition-theme" style={{ color: 'var(--text-primary)' }}>{purchase.supplier_name}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>{new Date(purchase.created_at || new Date()).toLocaleDateString('ar-EG')}</p>
+                      <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>{new Date(purchase.date || purchase.created_at || new Date()).toLocaleDateString('ar-EG')}</p>
                     </div>
                     <div className="col-span-2 text-center">
-                      <p className="text-[16px] font-bold" style={{ color: 'var(--primary)' }}>{formatCurrency(purchase.net_amount)}</p>
+                      <p className="text-[16px] font-bold" style={{ color: 'var(--primary)' }}>{formatCurrency(purchase.total || purchase.net_amount || 0)}</p>
                     </div>
                     <div className="col-span-2 text-center">
                       <span 
@@ -1004,10 +1050,25 @@ export default function PurchasesPage() {
                          purchase.payment_status === 'غير_مدفوع' || purchase.payment_status === 'unpaid' ? 'غير مدفوع' : 'غير معروف'}
                       </span>
                     </div>
-                    <div className="col-span-1 text-center">
-                      <Button variant="ghost" className="text-[12px] h-auto p-2">
+                    <div className="col-span-2 text-center flex items-center justify-center gap-1">
+                      <Button 
+                        variant="ghost" 
+                        className="text-[12px] h-auto p-2"
+                        onClick={() => handleViewDetails(purchase)}
+                      >
                         عرض
                       </Button>
+                      <button
+                        onClick={() => setPurchaseToDelete(purchase.id)}
+                        className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                        style={{ 
+                          backgroundColor: 'var(--danger-bg)', 
+                          color: 'var(--danger)' 
+                        }}
+                        title="حذف الفاتورة"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -1016,6 +1077,135 @@ export default function PurchasesPage() {
           </div>
         )}
       </div>
+
+      {/* Details Modal */}
+      {showDetailsModal && selectedPurchase && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div 
+            className="rounded-xl p-6 w-[600px] max-w-[90%] max-h-[80vh] overflow-y-auto transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-[18px] font-semibold transition-theme" style={{ color: 'var(--text-primary)' }}>
+                تفاصيل فاتورة الشراء
+              </h3>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                style={{ 
+                  backgroundColor: 'var(--danger-bg)', 
+                  color: 'var(--danger)' 
+                }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Invoice Info */}
+            <div className="grid grid-cols-2 gap-4 mb-6 p-4 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }}>
+              <div>
+                <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>رقم الفاتورة</p>
+                <p className="text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>{selectedPurchase.purchase_number || selectedPurchase.invoice_number}</p>
+              </div>
+              <div>
+                <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>التاريخ</p>
+                <p className="text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>{new Date(selectedPurchase.date || selectedPurchase.created_at || new Date()).toLocaleDateString('ar-EG')}</p>
+              </div>
+              <div>
+                <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>المورد</p>
+                <p className="text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>{selectedPurchase.supplier_name}</p>
+              </div>
+              <div>
+                <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>حالة الدفع</p>
+                <p className="text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {selectedPurchase.payment_status === 'مدفوع' || selectedPurchase.payment_status === 'paid' ? 'مدفوع' : 
+                   selectedPurchase.payment_status === 'جزئي' || selectedPurchase.payment_status === 'partial' ? 'جزئي' : 
+                   selectedPurchase.payment_status === 'غير_مدفوع' || selectedPurchase.payment_status === 'unpaid' ? 'غير مدفوع' : 'غير معروف'}
+                </p>
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <div className="mb-6">
+              <h4 className="text-[14px] font-medium mb-3" style={{ color: 'var(--text-primary)' }}>الأصناف</h4>
+              <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-color)' }}>
+                <div className="grid grid-cols-12 gap-2 p-3 text-[12px] font-medium" style={{ backgroundColor: 'var(--surface-1)', color: 'var(--text-muted)' }}>
+                  <div className="col-span-5">الصنف</div>
+                  <div className="col-span-2 text-center">الكمية</div>
+                  <div className="col-span-2 text-center">السعر</div>
+                  <div className="col-span-3 text-center">الإجمالي</div>
+                </div>
+                {(selectedPurchase.items || []).map((item: any, index: number) => (
+                  <div key={index} className="grid grid-cols-12 gap-2 p-3 text-[13px]" style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <div className="col-span-5" style={{ color: 'var(--text-primary)' }}>{item.product_name}</div>
+                    <div className="col-span-2 text-center" style={{ color: 'var(--text-muted)' }}>{item.qty || item.quantity}</div>
+                    <div className="col-span-2 text-center" style={{ color: 'var(--text-muted)' }}>{formatCurrency(item.unit_price || item.unit_cost || 0)}</div>
+                    <div className="col-span-3 text-center" style={{ color: 'var(--primary)' }}>{formatCurrency(item.total || item.total_cost || 0)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Totals */}
+            <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }}>
+              <div className="flex justify-between mb-2">
+                <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>الإجمالي:</span>
+                <span className="text-[14px] font-medium" style={{ color: 'var(--text-primary)' }}>{formatCurrency(selectedPurchase.total || selectedPurchase.net_amount || 0)}</span>
+              </div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>المدفوع:</span>
+                <span className="text-[14px] font-medium" style={{ color: 'var(--primary)' }}>{formatCurrency(selectedPurchase.paid || selectedPurchase.paid_amount || 0)}</span>
+              </div>
+              {(selectedPurchase.remaining || 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[13px]" style={{ color: 'var(--danger)' }}>المتبقي:</span>
+                  <span className="text-[14px] font-bold" style={{ color: 'var(--danger)' }}>{formatCurrency(selectedPurchase.remaining)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {purchaseToDelete && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div 
+            className="rounded-xl p-6 w-[400px] max-w-[90%] transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: 'var(--danger-bg)' }}>
+                <Trash2 className="w-8 h-8" style={{ color: 'var(--danger)' }} />
+              </div>
+              <h3 className="text-[18px] font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>تأكيد الحذف</h3>
+              <p className="text-[14px]" style={{ color: 'var(--text-muted)' }}>هل أنت متأكد من حذف هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.</p>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => setPurchaseToDelete(null)}
+                className="flex-1 h-[44px]"
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDeletePurchase}
+                className="flex-1 h-[44px]"
+              >
+                حذف
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

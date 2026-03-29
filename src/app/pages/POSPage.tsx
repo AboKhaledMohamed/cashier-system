@@ -58,6 +58,7 @@ interface InvoiceDataForReceipt {
   time: string;
   user_name: string;
   customer_name?: string;
+  customer_total_debt?: number;
   items: InvoiceItem[];
   subtotal: number;
   items_discount_total: number;
@@ -103,9 +104,42 @@ export default function POSPage() {
   const [suspendedInvoices, setSuspendedInvoices] = useState<SuspendedInvoice[]>([]);
   const [showSuspendedInvoices, setShowSuspendedInvoices] = useState(false);
   const [outOfStockWarning, setOutOfStockWarning] = useState<string | null>(null);
+  const [todayStats, setTodayStats] = useState({
+    sales: 0,
+    invoices: 0,
+    avgInvoice: 0,
+    itemsSold: 0,
+  });
   const [showAddCustomerForm, setShowAddCustomerForm] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  
+  // Customer search state
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
+  const [showCustomerResults, setShowCustomerResults] = useState(false);
+  
+  // Load today's stats from database - Real-time
+  const loadTodayStats = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const stats = await api.reports.getSalesReport(today, today);
+      const summary = stats.summary;
+      setTodayStats({
+        sales: summary.total_sales || 0,
+        invoices: summary.invoice_count || 0,
+        avgInvoice: summary.invoice_count > 0 ? Math.round(summary.total_sales / summary.invoice_count) : 0,
+        itemsSold: stats.invoices.reduce((sum: number, inv: any) => sum + (inv.items?.length || 0), 0),
+      });
+    } catch (e) {
+      console.error('Failed to load today stats:', e);
+    }
+  };
+
+  // Load stats on mount
+  useEffect(() => {
+    loadTodayStats();
+  }, []);
   
   // Load data on mount
   useEffect(() => {
@@ -132,6 +166,23 @@ export default function POSPage() {
   };
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // Ref for customer dropdown to detect clicks outside
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Close customer dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
+        setShowCustomerResults(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const shopSettings = useMemo(() => {
     return {
@@ -425,14 +476,15 @@ export default function POSPage() {
     const invoiceData: InvoiceDataForReceipt = {
       id: `inv-${Date.now()}`,
       invoice_number: invoiceNumber,
-      date: new Date().toLocaleDateString('ar-EG'),
-      time: new Date().toLocaleTimeString('ar-EG', {
+      date: new Date().toLocaleDateString('en-US'),
+      time: new Date().toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
       }),
       user_name: currentSession.user_name,
       customer_name: selectedCustomer?.name,
+      customer_total_debt: (selectedCustomer?.current_balance || 0) + (paymentMethod === 'credit' ? cart.total - paidAmount : 0),
       items: cartItems.map((item) => ({
         id: `item-${item.product.id}`,
         product_id: item.product.id,
@@ -511,6 +563,9 @@ export default function POSPage() {
       // Refresh products to get updated stock
       loadProducts();
 
+      // Refresh today's stats in real-time
+      await loadTodayStats();
+
       // Show receipt
       setInvoiceDataForReceipt(invoiceData);
       setShowReceipt(true);
@@ -543,7 +598,7 @@ export default function POSPage() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [cartItems, paymentMethod, selectedCustomer, cart, paidAmount]);
+  }, [cartItems, paymentMethod, selectedCustomer, cart, paidAmount, showSuspendedInvoices]);
 
   // ============================================================================
   // RESET SALE — إعادة تعيين
@@ -563,6 +618,10 @@ export default function POSPage() {
     setShowAddCustomerForm(false);
     setNewCustomerName('');
     setNewCustomerPhone('');
+    // Clear customer search
+    setCustomerSearchQuery('');
+    setCustomerSearchResults([]);
+    setShowCustomerResults(false);
   };
 
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -589,29 +648,32 @@ export default function POSPage() {
         <div className="grid grid-cols-4 gap-6">
           <div className="text-center">
             <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>مبيعات اليوم</p>
-            <p className="text-[21px] font-bold" style={{ color: 'var(--primary)' }}>8,750 جنيه</p>
+            <p className="text-[21px] font-bold" style={{ color: 'var(--primary)' }}>
+              {todayStats.sales.toLocaleString('en-US')} جنيه
+            </p>
           </div>
           <div 
             className="text-center border-r border-l transition-theme" 
             style={{ borderColor: 'var(--border-color)' }}
           >
             <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>عدد الفواتير</p>
-            <p className="text-[21px] font-bold" style={{ color: 'var(--info)' }}>23</p>
+            <p className="text-[21px] font-bold" style={{ color: 'var(--info)' }}>
+              {todayStats.invoices}
+            </p>
           </div>
           <div 
             className="text-center border-l transition-theme" 
             style={{ borderColor: 'var(--border-color)' }}
           >
             <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>متوسط الفاتورة</p>
-            <p className="text-[21px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>381 جنيه</p>
+            <p className="text-[21px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
+              {todayStats.avgInvoice.toLocaleString('en-US')} جنيه
+            </p>
           </div>
           <div className="text-center">
-            <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>الساعة</p>
-            <p className="text-[21px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-              {new Date().toLocaleTimeString('ar-EG', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+            <p className="text-[12px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>الأصناف المباعة</p>
+            <p className="text-[21px] font-bold transition-theme" style={{ color: 'var(--accent-purple)' }}>
+              {todayStats.itemsSold}
             </p>
           </div>
         </div>
@@ -1034,26 +1096,79 @@ export default function POSPage() {
                   </button>
                 </div>
 
-                <select
-                  onChange={(e) => {
-                    const customer = shopCustomers.find((c) => c.id === e.target.value);
-                    setSelectedCustomer(customer || null);
-                  }}
-                  value={selectedCustomer?.id || ''}
-                  className="w-full h-[40px] rounded px-3 outline-none transition-theme"
-                  style={{
-                    backgroundColor: 'var(--input-bg)',
-                    color: 'var(--text-primary)',
-                    border: '1px solid var(--border-color)'
-                  }}
-                >
-                  <option value="">-- اختر العميل --</option>
-                  {shopCustomers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} - {customer.phone}
-                    </option>
-                  ))}
-                </select>
+                {/* Customer Selection - Searchable */}
+                <div className="relative" ref={customerDropdownRef}>
+                  <input
+                    type="text"
+                    placeholder="ابحث عن عميل..."
+                    value={customerSearchQuery}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCustomerSearchQuery(value);
+                      if (value.trim()) {
+                        // Find matching customers
+                        const matches = shopCustomers.filter((c) => 
+                          c.name.toLowerCase().includes(value.toLowerCase()) ||
+                          c.phone.includes(value)
+                        );
+                        setCustomerSearchResults(matches);
+                        setShowCustomerResults(true);
+                        // Auto-select if exact match
+                        if (matches.length === 1 && matches[0].name.toLowerCase() === value.toLowerCase()) {
+                          setSelectedCustomer(matches[0]);
+                        }
+                      } else {
+                        setCustomerSearchResults([]);
+                        setShowCustomerResults(false);
+                        setSelectedCustomer(null);
+                      }
+                    }}
+                    className="w-full h-[40px] rounded px-3 outline-none transition-theme"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)'
+                    }}
+                  />
+                  
+                  {/* Customer Search Results */}
+                  {showCustomerResults && customerSearchQuery.trim() && (
+                    <div 
+                      className="absolute z-10 w-full mt-2 rounded-lg shadow-xl max-h-[200px] overflow-y-auto transition-theme"
+                      style={{
+                        backgroundColor: 'var(--card-bg)',
+                        border: '1px solid var(--border-color)'
+                      }}
+                    >
+                      {customerSearchResults.length > 0 ? (
+                        customerSearchResults.map((customer) => (
+                          <div
+                            key={customer.id}
+                            onClick={() => {
+                              setSelectedCustomer(customer);
+                              setCustomerSearchQuery(customer.name);
+                              setShowCustomerResults(false);
+                            }}
+                            className="flex items-center justify-between p-3 cursor-pointer border-b last:border-0 transition-theme"
+                            style={{ borderColor: 'var(--border-color)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-1)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            <div>
+                              <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{customer.name}</p>
+                              <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>{customer.phone}</p>
+                            </div>
+                            <Plus className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-3 text-center text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>
+                          لا يوجد عميل بهذا الاسم
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Add Customer Form */}
                 {showAddCustomerForm && (
@@ -1078,7 +1193,12 @@ export default function POSPage() {
                       type="text"
                       placeholder="اسم العميل *"
                       value={newCustomerName}
-                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || /^[\u0600-\u06FFa-zA-Z0-9\s]*$/.test(value)) {
+                          setNewCustomerName(value);
+                        }
+                      }}
                       className="w-full h-[36px] rounded px-3 text-[13px] outline-none transition-theme"
                       style={{
                         backgroundColor: 'var(--input-bg)',
@@ -1102,15 +1222,33 @@ export default function POSPage() {
                       variant="success"
                       size="default"
                       fullWidth
-                      onClick={() => {
+                      onClick={async () => {
                         if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
                           notify.error('يرجى إدخال اسم العميل ورقم التليفون');
                           return;
                         }
-                        notify.success('تم إضافة العميل بنجاح');
-                        setShowAddCustomerForm(false);
-                        setNewCustomerName('');
-                        setNewCustomerPhone('');
+                        if (!/^[\u0600-\u06FFa-zA-Z0-9\s]+$/.test(newCustomerName.trim())) {
+                          notify.error('اسم العميل يجب أن يحتوي على حروف وأرقام فقط بدون رموز');
+                          return;
+                        }
+                        try {
+                          // Create customer in database
+                          const newCustomer = await api.customers.create({
+                            name: newCustomerName.trim(),
+                            phone: newCustomerPhone.trim(),
+                          });
+                          // Refresh customers list
+                          await loadCustomers();
+                          // Select the new customer
+                          const createdCustomer = shopCustomers.find((c: Customer) => c.id === newCustomer.id) || newCustomer;
+                          setSelectedCustomer(createdCustomer);
+                          notify.success('تم إضافة العميل بنجاح');
+                          setShowAddCustomerForm(false);
+                          setNewCustomerName('');
+                          setNewCustomerPhone('');
+                        } catch (e: any) {
+                          notify.error(e.message || 'فشل في إضافة العميل');
+                        }
                       }}
                       disabled={!newCustomerName.trim() || !newCustomerPhone.trim()}
                     >
@@ -1425,6 +1563,12 @@ export default function POSPage() {
                       <div className="flex justify-between mt-1">
                         <span style={{ color: 'var(--text-muted)' }}>مبلغ الدين:</span>
                         <span className="font-bold" style={{ color: 'var(--warning)' }}>{formatCurrency(invoiceDataForReceipt.credit_amount || 0)}</span>
+                      </div>
+                    )}
+                    {invoiceDataForReceipt.customer_total_debt !== undefined && (
+                      <div className="flex justify-between mt-2 pt-2 transition-theme" style={{ borderTop: '1px dashed var(--danger)', color: 'var(--danger)' }}>
+                        <span className="font-bold">إجمالي الدين الكلي:</span>
+                        <span className="font-bold">{formatCurrency(invoiceDataForReceipt.customer_total_debt)}</span>
                       </div>
                     )}
                   </>

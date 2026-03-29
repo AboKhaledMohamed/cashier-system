@@ -11,21 +11,14 @@
  * ✅ إدارة حالات المرتجعات
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { notify, messages } from '../utils/toast';
 import { formatNumber } from '../utils/formatters';
-import {
-  Plus,
-  X,
-  Trash2,
-  DollarSign,
-  AlertTriangle,
-  Check,
-  Clock,
-} from 'lucide-react';
+import { useShop } from '../context/ShopContext';
+import { Search, Plus, X, Trash2, DollarSign, AlertTriangle, Check, Clock, UserPlus } from 'lucide-react';
 import type { Return, ReturnItem } from '../types/small-shop.types';
 
 // Mock data - empty initially for fresh database
@@ -40,35 +33,58 @@ const returnReasonLabels: Record<string, { label: string; color: string }> = {
   other: { label: 'أخرى', color: '#7A8CA0' },
 };
 
-const refundMethodLabels: Record<string, { label: string; color: string }> = {
-  cash: { label: 'نقدي', color: '#2ECC71' },
-  credit_balance: { label: 'رصيد العميل', color: '#3498DB' },
-  original_payment_method: { label: 'الطريقة الأصلية', color: '#F39C12' },
+const refundMethodLabels: Record<string, { label: string; color: string; description: string }> = {
+  cash: { label: 'نقدي', color: '#2ECC71', description: 'إرجاع نقدي للعميل' },
+  original_payment_method: { label: 'الطريقة الأصلية', color: '#F39C12', description: 'إرجاع بنفس طريقة الدفع الأصلية (كاش/آجل)' },
 };
 
 export default function ReturnsPage() {
+  const { customers, loadCustomers } = useShop();
+  const api = (window as any).electronAPI;
   const [returns, setReturns] = useState<Return[]>(mockReturns);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [expandedReturn, setExpandedReturn] = useState<string | null>(null);
+  
+  // Customer dropdown state
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showAddCustomerForm, setShowAddCustomerForm] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  
+  // Ref for customer dropdown to detect clicks outside
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   
   const [formData, setFormData] = useState<Partial<Return>>({
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString('ar-EG', { hour12: false }).slice(0, 5),
     original_invoice_number: '',
     customer_name: '',
+    customer_id: '',
     refund_method: 'cash',
     items: [],
-    notes: '',
   });
   
   const [newItem, setNewItem] = useState<Partial<ReturnItem>>({
     product_name: '',
     quantity_returned: 1,
     unit: 'piece',
-    unit_price: 0,
+    unit_price: undefined,
     reason: 'damaged',
-    detailed_reason: '',
   });
   
   // Filter returns
@@ -84,22 +100,69 @@ export default function ReturnsPage() {
   const totalReturns = filteredReturns.length;
   const totalRefundAmount = filteredReturns.reduce((sum, r) => sum + r.total_refund_amount, 0);
   
-  const handleAddItemToReturn = () => {
-    if (!newItem.product_name || !newItem.quantity_returned || !newItem.unit_price) {
-      notify.error('الرجاء ملء جميع البيانات');
+  // Customer selection handler
+  const handleSelectCustomer = (customer: any) => {
+    setFormData({
+      ...formData,
+      customer_name: customer.name,
+      customer_id: customer.id,
+    });
+    setShowCustomerDropdown(false);
+  };
+
+  // Add new customer handler
+  const handleAddNewCustomer = async () => {
+    if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
+      notify.error('أدخل اسم العميل ورقم التليفون');
       return;
     }
+
+    try {
+      const result = await api.customers.create({
+        name: newCustomerName.trim(),
+        phone: newCustomerPhone.trim(),
+      });
+      
+      setFormData({
+        ...formData,
+        customer_name: newCustomerName.trim(),
+        customer_id: result.id,
+      });
+      
+      setShowAddCustomerForm(false);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+      setShowCustomerDropdown(false);
+      notify.success('تم إضافة العميل بنجاح');
+      await loadCustomers();
+    } catch(e: any) {
+      notify.error(e.message || 'فشل إضافة العميل');
+    }
+  };
+
+  const handleAddItemToReturn = () => {
+    // Validate mandatory fields: product_name and quantity_returned
+    if (!newItem.product_name?.trim()) {
+      notify.error('اسم المنتج إجباري');
+      return;
+    }
+    if (!newItem.quantity_returned || newItem.quantity_returned <= 0) {
+      notify.error('الكمية يجب أن تكون أكبر من صفر');
+      return;
+    }
+    
+    // Use 0 as default for unit_price if not provided (optional field)
+    const unitPrice = newItem.unit_price || 0;
     
     const item: ReturnItem = {
       id: `ret-item-${Date.now()}`,
       product_id: `prod-${Date.now()}`,
-      product_name: newItem.product_name!,
+      product_name: newItem.product_name!.trim(),
       quantity_returned: newItem.quantity_returned!,
       unit: newItem.unit as any,
-      unit_price: newItem.unit_price!,
+      unit_price: unitPrice,
       reason: newItem.reason as any,
-      detailed_reason: newItem.detailed_reason,
-      refund_amount: newItem.quantity_returned! * newItem.unit_price!,
+      refund_amount: newItem.quantity_returned! * unitPrice,
     };
     
     setFormData({
@@ -111,9 +174,8 @@ export default function ReturnsPage() {
       product_name: '',
       quantity_returned: 1,
       unit: 'piece',
-      unit_price: 0,
+      unit_price: undefined,
       reason: 'damaged',
-      detailed_reason: '',
     });
   };
   
@@ -125,8 +187,9 @@ export default function ReturnsPage() {
   };
   
   const handleAddReturn = () => {
-    if (!formData.original_invoice_number || !formData.customer_name || !formData.items?.length) {
-      notify.error('الرجاء ملء جميع البيانات والعناصر');
+    // Only items are mandatory - product name and quantity
+    if (!formData.items?.length) {
+      notify.error('الرجاء إضافة عناصر مسترجعة');
       return;
     }
     
@@ -140,12 +203,12 @@ export default function ReturnsPage() {
       user_id: 'user-cashier-001',
       user_name: 'أحمد علي',
       original_invoice_id: `inv-${Date.now()}`,
-      original_invoice_number: formData.original_invoice_number!,
-      customer_name: formData.customer_name,
+      original_invoice_number: formData.original_invoice_number || '-',
+      customer_name: formData.customer_name || 'عميل نقدي',
+      customer_id: formData.customer_id,
       items: formData.items || [],
       total_refund_amount: totalRefund,
       refund_method: formData.refund_method as any,
-      notes: formData.notes,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -162,22 +225,23 @@ export default function ReturnsPage() {
   
   const closeDialog = () => {
     setShowAddDialog(false);
+    setShowCustomerDropdown(false);
+    setShowAddCustomerForm(false);
     setFormData({
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('ar-EG', { hour12: false }).slice(0, 5),
       original_invoice_number: '',
       customer_name: '',
+      customer_id: '',
       refund_method: 'cash',
       items: [],
-      notes: '',
     });
     setNewItem({
       product_name: '',
       quantity_returned: 1,
       unit: 'piece',
-      unit_price: 0,
+      unit_price: undefined,
       reason: 'damaged',
-      detailed_reason: '',
     });
   };
   
@@ -248,7 +312,7 @@ export default function ReturnsPage() {
             <div>
               <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الاسترجاعات</p>
               <p className="text-[26px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
-                {totalRefundAmount.toLocaleString('ar-EG')} ج
+                {totalRefundAmount.toLocaleString('en-US')} ج
               </p>
             </div>
           </div>
@@ -274,7 +338,7 @@ export default function ReturnsPage() {
         
         {/* Returns List */}
         <div 
-          className="rounded-lg overflow-hidden transition-theme"
+          className="rounded-lg overflow-hidden transition-theme overflow-x-auto"
           style={{ backgroundColor: 'var(--card-bg)' }}
         >
           <div 
@@ -326,7 +390,7 @@ export default function ReturnsPage() {
                         <div className="col-span-2">
                           <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>المبلغ</p>
                           <p className="text-[16px] font-bold" style={{ color: 'var(--accent-orange)' }}>
-                            {ret.total_refund_amount.toLocaleString('ar-EG')} ج
+                            {ret.total_refund_amount.toLocaleString('en-US')} ج
                           </p>
                         </div>
                         
@@ -417,30 +481,12 @@ export default function ReturnsPage() {
                                 <div>
                                   <p className="text-[11px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>المبلغ</p>
                                   <p className="font-bold" style={{ color: 'var(--accent-orange)' }}>
-                                    {item.refund_amount.toLocaleString(
-                                      'ar-EG'
-                                    )}{' '}
-                                    ج
+                                    {item.refund_amount.toLocaleString('en-US')}{' '} ج
                                   </p>
                                 </div>
                               </div>
-                              {item.detailed_reason && (
-                                <p className="text-[12px] mt-2 transition-theme" style={{ color: 'var(--text-muted)' }}>
-                                  {item.detailed_reason}
-                                </p>
-                              )}
                             </div>
                           ))}
-                          
-                          {ret.notes && (
-                            <div 
-                              className="p-3 rounded-lg transition-theme"
-                              style={{ backgroundColor: 'var(--card-bg)' }}
-                            >
-                              <p className="text-[11px] mb-1 transition-theme" style={{ color: 'var(--text-muted)' }}>الملاحظات</p>
-                              <p className="text-[13px] transition-theme" style={{ color: 'var(--text-primary)' }}>{ret.notes}</p>
-                            </div>
-                          )}
                         </div>
                       </div>
                     )}
@@ -489,7 +535,7 @@ export default function ReturnsPage() {
                 />
                 
                 <Input
-                  label="الوقت *"
+                  label="الوقت"
                   type="time"
                   value={formData.time}
                   onChange={(e) =>
@@ -498,7 +544,7 @@ export default function ReturnsPage() {
                 />
                 
                 <Input
-                  label="رقم الفاتورة الأصلية *"
+                  label="رقم الفاتورة الأصلية"
                   value={formData.original_invoice_number}
                   onChange={(e) =>
                     setFormData({
@@ -506,18 +552,132 @@ export default function ReturnsPage() {
                       original_invoice_number: e.target.value,
                     })
                   }
-                  placeholder="INV-2026-0001"
+                  placeholder=""
                 />
               </div>
               
-              <Input
-                label="اسم العميل *"
-                value={formData.customer_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, customer_name: e.target.value })
-                }
-                placeholder="أحمد السيد"
-              />
+              {/* Customer Selection with Dropdown */}
+              <div className="relative" ref={customerDropdownRef}>
+                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  اسم العميل (اختياري)
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={formData.customer_name}
+                      onChange={(e) => {
+                        setFormData({ ...formData, customer_name: e.target.value });
+                        setShowCustomerDropdown(e.target.value.trim().length > 0);
+                      }}
+                      placeholder="ابحث عن عميل..."
+                      className="w-full h-[44px] rounded-lg px-3 text-[14px] outline-none transition-theme"
+                      style={{
+                        backgroundColor: 'var(--input-bg)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border-color)'
+                      }}
+                    />
+                    
+                    {/* Customer Dropdown - only shows when searching */}
+                    {showCustomerDropdown && formData.customer_name?.trim() && customers.length > 0 && (
+                      <div 
+                        className="absolute z-10 w-full mt-2 rounded-lg shadow-xl max-h-[250px] overflow-y-auto transition-theme"
+                        style={{
+                          backgroundColor: 'var(--card-bg)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      >
+                        {customers
+                          .filter((c: any) => c.name.toLowerCase().includes((formData.customer_name || '').toLowerCase()))
+                          .map((customer: any) => (
+                            <div
+                              key={customer.id}
+                              onClick={() => handleSelectCustomer(customer)}
+                              className="flex items-center justify-between p-3 cursor-pointer border-b last:border-0 transition-theme"
+                              style={{ borderColor: 'var(--border-color)' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-1)'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              <div>
+                                <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{customer.name}</p>
+                                <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>{customer.phone}</p>
+                              </div>
+                              <Plus className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                            </div>
+                          ))}
+                        {customers.filter((c: any) => c.name.toLowerCase().includes((formData.customer_name || '').toLowerCase())).length === 0 && (
+                          <div className="p-3 text-center text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>لا يوجد عملاء مطابقين</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button
+                    onClick={() => setShowAddCustomerForm(!showAddCustomerForm)}
+                    className="w-[44px] h-[44px] rounded-lg flex items-center justify-center text-white transition-colors"
+                    style={{ backgroundColor: 'var(--primary)' }}
+                    title="إضافة عميل جديد"
+                  >
+                    <UserPlus className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                {/* Inline Add Customer Form */}
+                {showAddCustomerForm && (
+                  <div 
+                    className="mt-3 p-4 rounded-lg border transition-theme"
+                    style={{ 
+                      backgroundColor: 'var(--surface-1)',
+                      borderColor: 'var(--border-color)'
+                    }}
+                  >
+                    <h4 className="text-[14px] font-medium mb-3 transition-theme" style={{ color: 'var(--text-primary)' }}>إضافة عميل جديد</h4>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <input
+                        type="text"
+                        value={newCustomerName}
+                        onChange={(e) => setNewCustomerName(e.target.value)}
+                        placeholder="اسم العميل *"
+                        className="w-full h-[40px] rounded-lg px-3 text-[14px] outline-none transition-theme"
+                        style={{
+                          backgroundColor: 'var(--input-bg)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={newCustomerPhone}
+                        onChange={(e) => setNewCustomerPhone(e.target.value)}
+                        placeholder="رقم التليفون *"
+                        className="w-full h-[40px] rounded-lg px-3 text-[14px] outline-none transition-theme"
+                        style={{
+                          backgroundColor: 'var(--input-bg)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        onClick={() => setShowAddCustomerForm(false)}
+                        className="flex-1 h-[36px] text-[13px]"
+                      >
+                        إلغاء
+                      </Button>
+                      <Button
+                        variant="success"
+                        onClick={handleAddNewCustomer}
+                        className="flex-1 h-[36px] text-[13px]"
+                      >
+                        إضافة
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
               
               {/* Items Section */}
               <div 
@@ -571,7 +731,7 @@ export default function ReturnsPage() {
                   
                   <div className="grid grid-cols-2 gap-3">
                     <Input
-                      label="اسم المنتج"
+                      label="اسم المنتج *"
                       value={newItem.product_name}
                       onChange={(e) =>
                         setNewItem({
@@ -579,34 +739,64 @@ export default function ReturnsPage() {
                           product_name: e.target.value,
                         })
                       }
-                      placeholder="الحليب..."
+                      placeholder=""
                     />
                     
-                    <Input
-                      label="الكمية"
-                      type="number"
-                      value={newItem.quantity_returned}
-                      onChange={(e) =>
-                        setNewItem({
-                          ...newItem,
-                          quantity_returned: Number(e.target.value),
-                        })
-                      }
-                      placeholder="0"
-                    />
+                    <div>
+                      <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                        الكمية *
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={newItem.quantity_returned}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^[0-9]*$/.test(val)) {
+                            setNewItem({
+                              ...newItem,
+                              quantity_returned: val === '' ? 0 : Number(val),
+                            });
+                          }
+                        }}
+                        placeholder=""
+                        className="w-full h-[44px] rounded-lg px-3 outline-none transition-theme"
+                        style={{
+                          backgroundColor: 'var(--input-bg)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      />
+                    </div>
                     
-                    <Input
-                      label="سعر الوحدة"
-                      type="number"
-                      value={newItem.unit_price}
-                      onChange={(e) =>
-                        setNewItem({
-                          ...newItem,
-                          unit_price: Number(e.target.value),
-                        })
-                      }
-                      placeholder="0"
-                    />
+                    <div>
+                      <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                        سعر الوحدة
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9.]*"
+                        value={newItem.unit_price || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                            setNewItem({
+                              ...newItem,
+                              unit_price: val === '' ? undefined : Number(val),
+                            });
+                          }
+                        }}
+                        placeholder=""
+                        className="w-full h-[44px] rounded-lg px-3 outline-none transition-theme"
+                        style={{
+                          backgroundColor: 'var(--input-bg)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      />
+                    </div>
                     
                     <div>
                       <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
@@ -658,18 +848,6 @@ export default function ReturnsPage() {
                     </select>
                   </div>
                   
-                  <Input
-                    label="تفاصيل إضافية"
-                    value={newItem.detailed_reason}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        detailed_reason: e.target.value,
-                      })
-                    }
-                    placeholder="وصف تفصيلي للسبب"
-                  />
-                  
                   <Button
                     variant="info"
                     onClick={handleAddItemToReturn}
@@ -683,7 +861,7 @@ export default function ReturnsPage() {
               {/* Refund Settings */}
               <div>
                 <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
-                  طريقة الإرجاع النقدي
+                  طريقة الإرجاع
                 </label>
                 <select
                   value={formData.refund_method}
@@ -702,33 +880,19 @@ export default function ReturnsPage() {
                 >
                   {Object.entries(refundMethodLabels).map(([key, val]) => (
                     <option key={key} value={key}>
-                      {val.label}
+                      {val.label} - {val.description}
                     </option>
                   ))}
                 </select>
-              </div>
-              
-              <div>
-                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
-                  ملاحظات
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
-                  placeholder="ملاحظات إضافية"
-                  className="w-full h-[80px] rounded-lg px-3 py-2 outline-none resize-none transition-theme"
-                  style={{
-                    backgroundColor: 'var(--input-bg)',
-                    color: 'var(--text-primary)',
-                    border: '1px solid var(--border-color)'
-                  }}
-                />
+                <p className="text-[12px] mt-1 transition-theme" style={{ color: 'var(--text-muted)' }}>
+                  {formData.refund_method === 'cash' 
+                    ? 'سيتم إرجاع المبلغ نقدياً للعميل' 
+                    : 'إذا كانت الفاتورة الأصلية آجل، سيتم خصم المبلغ من ديون العميل. إذا كانت كاش، سيتم إرجاع النقد.'}
+                </p>
               </div>
               
               <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>
-                * الحقول الإلزامية
+                * الحقول الإلزامية: اسم المنتج، الكمية
               </p>
             </div>
             

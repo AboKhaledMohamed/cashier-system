@@ -25,9 +25,8 @@ import {
   Users,
   DollarSign,
   X,
-  AlertTriangle,
-  Lock,
-  CreditCard,
+  Trash2,
+  Wallet,
 } from 'lucide-react';
 import type { Supplier } from '../types/small-shop.types';
 
@@ -40,57 +39,39 @@ const trustLevelLabels: Record<string, { label: string; color: string }> = {
 };
 
 export default function SuppliersPage() {
-  const { suppliers, loadSuppliers, currentUser } = useShop();
+  const { suppliers, loadSuppliers } = useShop();
   const api = (window as any).electronAPI;
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterBlacklist, setFilterBlacklist] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string }>({});
   
+  // Form data state
   const [formData, setFormData] = useState<Partial<Supplier>>({
     name: '',
     phone: '',
     email: '',
     address: '',
-    debt_limit: 10000,
-    debt_used: 0,
-    debt_remaining: 10000,
-    trust_level: 'average',
-    total_purchases: 0,
-    total_purchases_amount: 0,
-    is_active: true,
-    is_blacklisted: false,
-    notes: '',
   });
   
-  const [debtAdjustment, setDebtAdjustment] = useState<{
-    adjustment_type: 'increase' | 'decrease' | 'pay';
-    amount: number;
-    reason: string;
-  }>({
-    adjustment_type: 'pay',
-    amount: 0,
-    reason: '',
-  });
-  const [showDebtDialog, setShowDebtDialog] = useState(false);
+  // Pay debt modal states
+  const [supplierToPay, setSupplierToPay] = useState<Supplier | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // Filter suppliers
   const filteredSuppliers = suppliers.filter((supplier) => {
     const matchesSearch =
       supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       supplier.phone.includes(searchQuery);
-    const matchesBlacklist = !filterBlacklist || supplier.is_blacklisted;
-    return matchesSearch && matchesBlacklist;
+    return matchesSearch;
   });
 
   // Calculate stats
   const totalSuppliers = suppliers.length;
   const totalDebt = suppliers.reduce((sum, s) => sum + (Number((s as any).current_balance || s.debt_used) || 0), 0);
-  const blacklistedCount = suppliers.filter((s) => s.is_blacklisted).length;
-  const highRiskCount = suppliers.filter(
-    (s) => s.debt_remaining <= s.debt_limit * 0.2 && !s.is_blacklisted
-  ).length;
 
   const handleSave = async () => {
     const errors: { name?: string; phone?: string } = {};
@@ -101,12 +82,18 @@ export default function SuppliersPage() {
       return;
     }
 
+    const saveData = { ...formData };
+    delete (saveData as any).debt_limit;
+    delete (saveData as any).debt_remaining;
+    delete (saveData as any).trust_level;
+    delete (saveData as any).is_blacklisted;
+
     try {
       if (editingSupplier) {
-        await api.suppliers.update(editingSupplier.id, formData);
+        await api.suppliers.update(editingSupplier.id, saveData);
         notify.success('تم تحديث بيانات المورد');
       } else {
-        await api.suppliers.create(formData);
+        await api.suppliers.create(saveData);
         notify.success('تم إضافة المورد بنجاح');
       }
       await loadSuppliers();
@@ -115,41 +102,94 @@ export default function SuppliersPage() {
     closeDialog();
   };
 
-  const handleDebtAdjustment = async () => {
-    if (!editingSupplier || debtAdjustment.amount <= 0) {
-      notify.error('يرجى إدخال مبلغ صحيح');
+  const handleDelete = async () => {
+    if (!supplierToDelete) return;
+    setIsDeleting(true);
+    try {
+      await api.suppliers.delete(supplierToDelete.id);
+      notify.success('تم حذف المورد بنجاح');
+      await loadSuppliers();
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في حذف المورد');
+    } finally {
+      setIsDeleting(false);
+      setSupplierToDelete(null);
+    }
+  };
+
+  const confirmDelete = () => {
+    handleDelete();
+  };
+
+  const cancelDelete = () => {
+    setSupplierToDelete(null);
+  };
+  
+  // Pay debt handlers
+  const handlePayDebtClick = (supplier: Supplier) => {
+    if (((supplier as any).current_balance || (supplier as any).debt_used || 0) <= 0) {
+      notify.error('لا يوجد مبلغ مستحق لهذا المورد');
       return;
     }
+    setSupplierToPay(supplier);
+    setPaymentAmount('');
+    setPaymentError('');
+  };
 
+  const cancelPayDebt = () => {
+    setSupplierToPay(null);
+    setPaymentAmount('');
+    setPaymentError('');
+  };
+
+  const confirmPayDebt = async () => {
+    if (!supplierToPay) return;
+    
+    const amount = Number(paymentAmount);
+    const currentDebt = ((supplierToPay as any).current_balance || (supplierToPay as any).debt_used || 0);
+    
+    if (!paymentAmount || isNaN(amount) || amount <= 0) {
+      setPaymentError('يرجى إدخال مبلغ صحيح أكبر من صفر');
+      return;
+    }
+    
+    if (amount > currentDebt) {
+      setPaymentError(`المبلغ المدخل (${amount}) أكبر من المبلغ المستحق (${currentDebt})`);
+      return;
+    }
+    
+    setIsProcessingPayment(true);
     try {
-      if (debtAdjustment.adjustment_type === 'pay') {
-        await api.payments.create({
-          payment_direction: 'سداد',
-          party_type: 'supplier',
-          party_id: editingSupplier.id,
-          party_name: editingSupplier.name,
-          amount: debtAdjustment.amount,
-          method: 'نقدي',
-          user_id: currentUser?.id || 'user-admin-001',
-          notes: debtAdjustment.reason,
-        });
-      }
+      await api.payments.create({
+        payment_direction: 'سداد',
+        party_type: 'supplier',
+        party_id: supplierToPay.id,
+        party_name: supplierToPay.name,
+        amount: amount,
+        method: 'نقدي',
+        user_id: 'user-admin-001',
+        notes: 'دفع لتقليل المبلغ المستحق للمورد'
+      });
+      
+      notify.success(`تم الدفع بمبلغ ${amount} جنيه بنجاح`);
       await loadSuppliers();
-      notify.success('تم تعديل الديون بنجاح');
-    } catch(e: any) { notify.error(e.message); }
-    setShowDebtDialog(false);
-    setDebtAdjustment({ adjustment_type: 'pay', amount: 0, reason: '' });
+      cancelPayDebt();
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في عملية الدفع');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const openEditDialog = (supplier: Supplier) => {
     setEditingSupplier(supplier);
-    setFormData(supplier);
+    setFormData({
+      name: supplier.name,
+      phone: supplier.phone,
+      email: supplier.email,
+      address: (supplier as any).address,
+    });
     setShowAddForm(true);
-  };
-
-  const openDebtDialog = (supplier: Supplier) => {
-    setEditingSupplier(supplier);
-    setShowDebtDialog(true);
   };
 
   const closeDialog = () => {
@@ -160,15 +200,6 @@ export default function SuppliersPage() {
       phone: '',
       email: '',
       address: '',
-      debt_limit: 10000,
-      debt_used: 0,
-      debt_remaining: 10000,
-      trust_level: 'average',
-      total_purchases: 0,
-      total_purchases_amount: 0,
-      is_active: true,
-      is_blacklisted: false,
-      notes: '',
     });
     setFormErrors({});
   };
@@ -206,13 +237,6 @@ export default function SuppliersPage() {
               }}
             />
           </div>
-
-          <Button
-            variant={filterBlacklist ? 'danger' : 'ghost'}
-            onClick={() => setFilterBlacklist(!filterBlacklist)}
-          >
-            {filterBlacklist ? `ممنوعين (${blacklistedCount})` : 'عرض الممنوعين'}
-          </Button>
 
           <Button
             variant="info"
@@ -268,19 +292,6 @@ export default function SuppliersPage() {
                 onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
                 placeholder="01xxxxxxxxx (اختياري)"
               />
-              <Input
-                label="حد الدين"
-                type="number"
-                value={formData.debt_limit}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    debt_limit: Number(e.target.value),
-                    debt_remaining: Number(e.target.value) - (editingSupplier?.debt_used || 0),
-                  })
-                }
-                placeholder="10000"
-              />
               <div>
                 <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>العنوان</label>
                 <input
@@ -309,8 +320,8 @@ export default function SuppliersPage() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-5">
+        {/* Stats - Only 2 stats */}
+        <div className="grid grid-cols-2 gap-5">
           <div 
             className="rounded-lg p-5 flex items-center gap-4 transition-theme"
             style={{ backgroundColor: 'var(--card-bg)' }}
@@ -338,51 +349,19 @@ export default function SuppliersPage() {
               <DollarSign className="w-6 h-6" style={{ color: 'var(--warning)' }} />
             </div>
             <div>
-              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>إجمالي الديون</p>
+              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>المبلغ المستحق</p>
               <p className="text-[26px] font-bold" style={{ color: 'var(--warning)' }}>{formatCurrency(totalDebt)}</p>
-            </div>
-          </div>
-
-          <div 
-            className="rounded-lg p-5 flex items-center gap-4 transition-theme"
-            style={{ backgroundColor: 'var(--card-bg)' }}
-          >
-            <div 
-              className="w-12 h-12 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--accent-orange-bg)' }}
-            >
-              <AlertTriangle className="w-6 h-6" style={{ color: 'var(--accent-orange)' }} />
-            </div>
-            <div>
-              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>خطر مالي (نسبة منخفضة)</p>
-              <p className="text-[26px] font-bold" style={{ color: 'var(--accent-orange)' }}>{highRiskCount}</p>
-            </div>
-          </div>
-
-          <div 
-            className="rounded-lg p-5 flex items-center gap-4 transition-theme"
-            style={{ backgroundColor: 'var(--card-bg)' }}
-          >
-            <div 
-              className="w-12 h-12 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'var(--danger-bg)' }}
-            >
-              <Lock className="w-6 h-6" style={{ color: 'var(--danger)' }} />
-            </div>
-            <div>
-              <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>موردين ممنوعين</p>
-              <p className="text-[26px] font-bold" style={{ color: 'var(--danger)' }}>{blacklistedCount}</p>
             </div>
           </div>
         </div>
 
-        {/* Suppliers Table */}
+        {/* Suppliers Table - Simplified */}
         <div 
-          className="rounded-lg overflow-hidden transition-theme"
+          className="rounded-lg overflow-hidden transition-theme overflow-x-auto"
           style={{ backgroundColor: 'var(--card-bg)' }}
         >
           <div 
-            className="grid grid-cols-12 gap-4 p-4 text-[14px] font-medium transition-theme"
+            className="grid grid-cols-6 gap-4 p-4 text-[14px] font-medium transition-theme"
             style={{ 
               backgroundColor: 'var(--surface-1)',
               color: 'var(--text-muted)'
@@ -390,11 +369,7 @@ export default function SuppliersPage() {
           >
             <div className="col-span-2">الاسم</div>
             <div className="col-span-2">التليفون</div>
-            <div className="col-span-1 text-center">الديون</div>
-            <div className="col-span-1 text-center">المتبقي</div>
-            <div className="col-span-1 text-center">الحد</div>
-            <div className="col-span-2">الثقة</div>
-            <div className="col-span-2">الحالة</div>
+            <div className="col-span-1 text-center">المبلغ المستحق</div>
             <div className="col-span-1 text-center">الإجراء</div>
           </div>
 
@@ -405,29 +380,19 @@ export default function SuppliersPage() {
             {filteredSuppliers.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-[16px] transition-theme" style={{ color: 'var(--text-muted)' }}>لا يوجد موردين</p>
-                <p className="text-[13px] mt-1 transition-theme" style={{ color: 'var(--text-muted)' }}>ابدأ بإضافة مورد جديد من زر إضافة مورد</p>
+                <p className="text-[13px] mt-1 transition-theme" style={{ color: 'var(--text-muted)' }}>ابدأ بإضافة مورد جديد</p>
               </div>
             ) : (
               filteredSuppliers.map((supplier) => {
-                const trustColor = getStatusColor(supplier.trust_level);
-
                 return (
                   <div
                     key={supplier.id}
-                    className="grid grid-cols-12 gap-4 p-4 items-center transition-all"
-                    style={{
-                      backgroundColor: supplier.is_blacklisted ? 'var(--danger-bg)' : 'transparent',
-                      opacity: supplier.is_blacklisted ? 0.6 : 1
-                    }}
+                    className="grid grid-cols-6 gap-4 p-4 items-center transition-all"
                     onMouseEnter={(e) => {
-                      if (!supplier.is_blacklisted) {
-                        e.currentTarget.style.backgroundColor = 'var(--surface-1)';
-                      }
+                      e.currentTarget.style.backgroundColor = 'var(--surface-1)';
                     }}
                     onMouseLeave={(e) => {
-                      if (!supplier.is_blacklisted) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }
+                      e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
                     <div className="col-span-2">
@@ -445,78 +410,25 @@ export default function SuppliersPage() {
                       </p>
                     </div>
                     <div className="col-span-1 text-center">
-                      <p
-                        className="text-[14px] font-bold"
-                        style={{
-                          color: ((supplier.debt_remaining ?? (supplier.debt_limit - ((supplier as any).current_balance || 0))) || 0) > 500 ? 'var(--primary)' : 
-                          ((supplier.debt_remaining ?? (supplier.debt_limit - ((supplier as any).current_balance || 0))) || 0) > 0 ? 'var(--accent-orange)' : 'var(--danger)'
-                        }}
-                      >
-                        {formatCurrency((supplier.debt_remaining ?? (supplier.debt_limit - ((supplier as any).current_balance || 0))) || 0)}
-                      </p>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>
-                        {formatCurrency(supplier.debt_limit)}
-                      </p>
-                    </div>
-                    <div className="col-span-2">
-                      <span
-                        className="px-3 py-1 rounded-full text-[12px] font-medium"
-                        style={{
-                          color: trustColor,
-                          backgroundColor: `${trustColor}20`,
-                        }}
-                      >
-                        {trustLevelLabels[supplier.trust_level]?.label || supplier.trust_level}
-                      </span>
-                    </div>
-                    <div className="col-span-2 flex items-center gap-2">
-                      {supplier.is_blacklisted && (
-                        <span 
-                          className="px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1"
-                          style={{ 
-                            backgroundColor: 'var(--danger-bg)', 
-                            color: 'var(--danger)' 
-                          }}
-                        >
-                          <Lock className="w-3 h-3" />
-                          ممنوع
-                        </span>
-                      )}
-                      {supplier.debt_remaining <= supplier.debt_limit * 0.2 && !supplier.is_blacklisted && (
-                        <span 
-                          className="px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1"
-                          style={{ 
-                            backgroundColor: 'var(--warning-bg)', 
-                            color: 'var(--warning)' 
-                          }}
-                        >
-                          <AlertTriangle className="w-3 h-3" />
-                          خطر
-                        </span>
-                      )}
-                    </div>
-                    <div className="col-span-1 text-center">
                       <div className="flex gap-1 justify-center">
                         <button
-                          onClick={() => openDebtDialog(supplier)}
-                          title="ضبط الديون"
+                          onClick={() => handlePayDebtClick(supplier)}
+                          title="دفع للمورد"
                           className="w-8 h-8 rounded flex items-center justify-center transition-all"
                           style={{ 
-                            backgroundColor: 'var(--warning-bg)', 
-                            color: 'var(--warning)' 
+                            backgroundColor: 'var(--success-bg)', 
+                            color: 'var(--success)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--warning)';
+                            e.currentTarget.style.backgroundColor = 'var(--success)';
                             e.currentTarget.style.color = 'white';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--warning-bg)';
-                            e.currentTarget.style.color = 'var(--warning)';
+                            e.currentTarget.style.backgroundColor = 'var(--success-bg)';
+                            e.currentTarget.style.color = 'var(--success)';
                           }}
                         >
-                          <CreditCard className="w-4 h-4" />
+                          <Wallet className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openEditDialog(supplier)}
@@ -537,6 +449,25 @@ export default function SuppliersPage() {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
+                        <button
+                          onClick={() => setSupplierToDelete(supplier)}
+                          title="حذف المورد"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          style={{ 
+                            backgroundColor: 'var(--danger-bg)', 
+                            color: 'var(--danger)' 
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--danger)';
+                            e.currentTarget.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                            e.currentTarget.style.color = 'var(--danger)';
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -547,123 +478,128 @@ export default function SuppliersPage() {
         </div>
       </div>
 
-      {/* Debt Adjustment Dialog */}
-      {showDebtDialog && editingSupplier && (
+      {/* Delete Confirmation Modal */}
+      {supplierToDelete && (
         <div 
           className="fixed inset-0 flex items-center justify-center z-50"
           style={{ backgroundColor: 'var(--overlay-bg)' }}
         >
           <div 
-            className="w-full max-w-[600px] rounded-lg overflow-hidden transition-theme"
+            className="w-full max-w-[400px] rounded-lg overflow-hidden transition-theme"
             style={{ backgroundColor: 'var(--card-bg)' }}
           >
             <div 
-              className="p-4 flex items-center justify-between"
-              style={{ backgroundColor: 'var(--warning)' }}
+              className="p-4 flex items-center justify-center"
+              style={{ backgroundColor: 'var(--danger)' }}
             >
-              <div>
-                <h3 className="text-[21px] font-bold" style={{ color: 'white' }}>ضبط الديون</h3>
-                <p className="text-[14px]" style={{ color: 'rgba(255,255,255,0.8)' }}>{editingSupplier.name}</p>
-              </div>
-              <button
-                onClick={() => setShowDebtDialog(false)}
-                className="w-8 h-8 bg-white/20 rounded hover:bg-white/30 flex items-center justify-center"
-              >
-                <X className="w-5 h-5" style={{ color: 'white' }} />
-              </button>
+              <Trash2 className="w-8 h-8 text-white" />
             </div>
-
-            <div className="p-6 space-y-4">
-              {/* Debt Info */}
-              <div 
-                className="grid grid-cols-3 gap-4 p-4 rounded-lg transition-theme"
-                style={{ backgroundColor: 'var(--surface-1)' }}
-              >
-                <div className="text-center">
-                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>الديون</p>
-                  <p className="text-[20px] font-bold" style={{ color: 'var(--warning)' }}>{formatCurrency((editingSupplier as any).current_balance || editingSupplier.debt_used || 0)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>المتبقي</p>
-                  <p
-                    className="text-[20px] font-bold"
-                    style={{
-                      color: ((editingSupplier.debt_remaining ?? (editingSupplier.debt_limit - ((editingSupplier as any).current_balance || 0))) || 0) > 500 ? 'var(--primary)' : 
-                      ((editingSupplier.debt_remaining ?? (editingSupplier.debt_limit - ((editingSupplier as any).current_balance || 0))) || 0) > 0 ? 'var(--accent-orange)' : 'var(--danger)'
-                    }}
-                  >
-                    {formatCurrency((editingSupplier.debt_remaining ?? (editingSupplier.debt_limit - ((editingSupplier as any).current_balance || 0))) || 0)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>الحد الأقصى</p>
-                  <p className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>{formatCurrency(editingSupplier.debt_limit || 0)}</p>
-                </div>
+            <div className="p-6 text-center">
+              <h3 className="text-[18px] font-bold mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                تأكيد الحذف
+              </h3>
+              <p className="text-[14px] mb-4 transition-theme" style={{ color: 'var(--text-muted)' }}>
+                هل أنت متأكد من حذف المورد "{supplierToDelete.name}"؟
+              </p>
+              {((supplierToDelete as any).current_balance || supplierToDelete.debt_used || 0) > 0 && (
+                <p className="text-[12px] mb-4" style={{ color: 'var(--warning)' }}>
+                  ⚠️ يوجد مبلغ مستحق على هذا المورد: {formatCurrency((supplierToDelete as any).current_balance || supplierToDelete.debt_used || 0)}
+                </p>
+              )}
+              <div className="flex gap-3">
+                <Button 
+                  variant="ghost" 
+                  onClick={cancelDelete} 
+                  fullWidth 
+                  disabled={isDeleting}
+                >
+                  إلغاء
+                </Button>
+                <Button 
+                  variant="danger" 
+                  onClick={confirmDelete} 
+                  fullWidth 
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? 'جاري الحذف...' : 'حذف'}
+                </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Adjustment Type */}
-              <div>
-                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>نوع التعديل</label>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setDebtAdjustment({ ...debtAdjustment, adjustment_type: 'pay' })}
-                    className="flex-1 h-[44px] rounded-lg font-medium transition-all"
-                    style={{
-                      backgroundColor: debtAdjustment.adjustment_type === 'pay' ? 'var(--primary)' : 'var(--primary-light)',
-                      color: debtAdjustment.adjustment_type === 'pay' ? 'white' : 'var(--primary)'
-                    }}
-                  >
-                    دفع (تقليل الدين)
-                  </button>
-                  <button
-                    onClick={() => setDebtAdjustment({ ...debtAdjustment, adjustment_type: 'increase' })}
-                    className="flex-1 h-[44px] rounded-lg font-medium transition-all"
-                    style={{
-                      backgroundColor: debtAdjustment.adjustment_type === 'increase' ? 'var(--warning)' : 'var(--warning-bg)',
-                      color: debtAdjustment.adjustment_type === 'increase' ? 'white' : 'var(--warning)'
-                    }}
-                  >
-                    زيادة دين
-                  </button>
-                </div>
-              </div>
-
-              {/* Amount */}
-              <Input
-                label={`المبلغ (${debtAdjustment.adjustment_type === 'pay' ? 'الدفع' : 'الزيادة'}) *`}
-                type="number"
-                value={debtAdjustment.amount}
-                onChange={(e) => setDebtAdjustment({ ...debtAdjustment, amount: Number(e.target.value) })}
-                placeholder="0"
-              />
-
-              {/* Reason */}
-              <div>
-                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>السبب</label>
-                <textarea
-                  value={debtAdjustment.reason}
-                  onChange={(e) => setDebtAdjustment({ ...debtAdjustment, reason: e.target.value })}
-                  placeholder="سبب التعديل (اختياري)"
-                  className="w-full h-[80px] rounded-lg px-3 py-2 outline-none resize-none transition-theme"
+      {/* Pay Debt Modal */}
+      {supplierToPay && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div 
+            className="w-full max-w-[400px] rounded-lg overflow-hidden transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div 
+              className="p-4 flex items-center justify-center"
+              style={{ backgroundColor: 'var(--success)' }}
+            >
+              <Wallet className="w-8 h-8 text-white" />
+            </div>
+            <div className="p-6">
+              <h3 className="text-[18px] font-bold mb-2 transition-theme text-center" style={{ color: 'var(--text-primary)' }}>
+                دفع للمورد
+              </h3>
+              <p className="text-[14px] mb-4 transition-theme text-center" style={{ color: 'var(--text-muted)' }}>
+                المورد: {supplierToPay.name}
+              </p>
+              <p className="text-[14px] mb-4 transition-theme text-center" style={{ color: 'var(--warning)' }}>
+                المبلغ المستحق: {formatCurrency(((supplierToPay as any).current_balance || (supplierToPay as any).debt_used || 0))}
+              </p>
+              
+              <div className="mb-4">
+                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  مبلغ الدفع
+                </label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => {
+                    setPaymentAmount(e.target.value);
+                    setPaymentError('');
+                  }}
+                  placeholder="أدخل المبلغ"
+                  className="w-full h-[44px] rounded-lg px-3 outline-none transition-theme"
                   style={{
                     backgroundColor: 'var(--input-bg)',
                     color: 'var(--text-primary)',
-                    border: '1px solid var(--border-color)'
+                    border: paymentError ? '1px solid var(--danger)' : '1px solid var(--border-color)'
                   }}
                 />
+                {paymentError && (
+                  <p className="text-[12px] mt-1" style={{ color: 'var(--danger)' }}>
+                    {paymentError}
+                  </p>
+                )}
               </div>
-            </div>
-
-            <div 
-              className="p-4 flex gap-3 transition-theme"
-              style={{ backgroundColor: 'var(--surface-1)' }}
-            >
-              <Button variant="ghost" onClick={() => setShowDebtDialog(false)} fullWidth>
-                إلغاء
-              </Button>
-              <Button variant="warning" onClick={handleDebtAdjustment} fullWidth>
-                تطبيق التعديل
-              </Button>
+              
+              <div className="flex gap-3">
+                <Button 
+                  variant="ghost" 
+                  onClick={cancelPayDebt} 
+                  fullWidth 
+                  disabled={isProcessingPayment}
+                >
+                  إلغاء
+                </Button>
+                <Button 
+                  variant="success" 
+                  onClick={confirmPayDebt} 
+                  fullWidth 
+                  disabled={isProcessingPayment}
+                >
+                  {isProcessingPayment ? 'جاري المعالجة...' : 'تأكيد الدفع'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

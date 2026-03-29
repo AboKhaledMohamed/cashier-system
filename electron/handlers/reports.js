@@ -6,11 +6,28 @@ function registerReportHandlers() {
   ipcMain.handle('reports:getDashboardStats', async () => {
     const db = getDb();
     const today = new Date().toISOString().split('T')[0];
+    
+    // Calculate current month range
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
     const todaySales = db.prepare(`
       SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total
       FROM invoices WHERE date = ? AND invoice_type = 'بيع' AND status = 'مكتمل'
     `).get(today);
+
+    // Monthly sales
+    const monthSales = db.prepare(`
+      SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total
+      FROM invoices WHERE date BETWEEN ? AND ? AND invoice_type = 'بيع' AND status = 'مكتمل'
+    `).get(monthStart, monthEnd);
+
+    // Monthly invoices count
+    const monthInvoices = db.prepare(`
+      SELECT COUNT(*) as count FROM invoices 
+      WHERE date BETWEEN ? AND ? AND invoice_type = 'بيع' AND status = 'مكتمل'
+    `).get(monthStart, monthEnd);
 
     const todayReturns = db.prepare(`
       SELECT COALESCE(SUM(refund_amount), 0) as total
@@ -21,6 +38,11 @@ function registerReportHandlers() {
       SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date = ?
     `).get(today);
 
+    // Monthly expenses
+    const monthExpenses = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date BETWEEN ? AND ?
+    `).get(monthStart, monthEnd);
+
     const todayCollections = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM payments WHERE date = ? AND party_type = 'customer' AND payment_direction = 'تحصيل'
@@ -29,6 +51,12 @@ function registerReportHandlers() {
     const totalCustomerDebt = db.prepare(`
       SELECT COALESCE(SUM(current_balance), 0) as total FROM customers WHERE is_active = 1
     `).get();
+
+    // Monthly customer debt (credit sales this month)
+    const monthCustomerDebt = db.prepare(`
+      SELECT COALESCE(SUM(credit_amount), 0) as total FROM invoices 
+      WHERE date BETWEEN ? AND ? AND invoice_type = 'بيع' AND status = 'مكتمل' AND payment_method = 'آجل'
+    `).get(monthStart, monthEnd);
 
     const totalSupplierDebt = db.prepare(`
       SELECT COALESCE(SUM(current_balance), 0) as total FROM suppliers WHERE is_active = 1
@@ -54,16 +82,22 @@ function registerReportHandlers() {
       GROUP BY date(date) ORDER BY day
     `).all();
 
-    // Top selling products today
+    // Top selling products today - grouped by product name to avoid duplicates
     const topProducts = db.prepare(`
       SELECT ii.product_name, SUM(ii.qty) as total_qty, SUM(ii.total) as total_revenue
       FROM invoice_items ii
       JOIN invoices i ON ii.invoice_id = i.id
       WHERE i.date = ? AND i.invoice_type = 'بيع' AND i.status = 'مكتمل'
-      GROUP BY ii.product_id ORDER BY total_revenue DESC LIMIT 10
+      GROUP BY ii.product_name ORDER BY total_revenue DESC LIMIT 10
     `).all(today);
 
     return {
+      // Monthly stats
+      month_sales: monthSales.total,
+      month_invoices: monthInvoices.count,
+      month_customer_debt: monthCustomerDebt.total,
+      month_expenses: monthExpenses.total,
+      // Today stats
       today_sales: todaySales.total,
       today_invoices: todaySales.count,
       today_returns: todayReturns.total,

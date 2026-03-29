@@ -12,7 +12,7 @@ function registerPurchaseHandlers() {
 
   ipcMain.handle('purchases:getAll', async () => {
     const db = getDb();
-    return db.prepare('SELECT * FROM purchases ORDER BY created_at DESC LIMIT 500').all();
+    return db.prepare("SELECT * FROM purchases WHERE status != 'ملغي' AND status != 'cancelled' ORDER BY created_at DESC LIMIT 500").all();
   });
 
   ipcMain.handle('purchases:getById', async (event, id) => {
@@ -55,7 +55,7 @@ function registerPurchaseHandlers() {
     // Calculate values with defaults
     const total = data.total || 0;
     const paid = data.paid || 0;
-    const remaining = total - paid;
+    const remaining = data.remaining !== undefined ? data.remaining : (total - paid);
 
     return db.transaction(() => {
       let paymentStatus = 'غير_مدفوع';
@@ -183,9 +183,35 @@ function registerPurchaseHandlers() {
   });
 
   ipcMain.handle('purchases:delete', async (event, id) => {
-    const db = getDb();
-    db.prepare("UPDATE purchases SET status = 'ملغي' WHERE id = ?").run(id);
-    return { success: true };
+    try {
+      const db = getDb();
+      console.log('Backend: Deleting purchase with id:', id);
+      
+      // Check if purchase exists
+      const purchase = db.prepare('SELECT * FROM purchases WHERE id = ?').get(id);
+      if (!purchase) {
+        console.log('Backend: Purchase not found:', id);
+        throw new Error('الفاتورة غير موجودة');
+      }
+      console.log('Backend: Found purchase:', purchase.purchase_number);
+      
+      // Delete purchase items first (manual deletion)
+      const deleteItemsResult = db.prepare('DELETE FROM purchase_items WHERE purchase_id = ?').run(id);
+      console.log('Backend: Deleted items count:', deleteItemsResult.changes);
+      
+      // Delete the purchase
+      const deletePurchaseResult = db.prepare('DELETE FROM purchases WHERE id = ?').run(id);
+      console.log('Backend: Deleted purchase result:', deletePurchaseResult.changes);
+      
+      if (deletePurchaseResult.changes === 0) {
+        throw new Error('لم يتم حذف الفاتورة');
+      }
+      
+      return { success: true, message: 'تم الحذف بنجاح' };
+    } catch (error) {
+      console.error('Backend: Delete error:', error);
+      throw error;
+    }
   });
 }
 

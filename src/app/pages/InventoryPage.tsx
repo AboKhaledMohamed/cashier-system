@@ -9,14 +9,7 @@ import { useLowStockAlerts } from '../context/useShopHooks';
 import { formatCurrency, formatNumber, formatDate } from '../utils/formatters';
 import { notify, messages } from '../utils/toast';
 import { useLocation } from 'react-router';
-import {
-  Search,
-  Plus,
-  Edit,
-  AlertCircle,
-  Package,
-  X,
-} from 'lucide-react';
+import { Search, Plus, Edit, AlertCircle, Package, X, Trash2 } from 'lucide-react';
 import type { Product } from '../types/small-shop.types';
 
 export default function InventoryPage() {
@@ -26,6 +19,8 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showAddForm, setShowAddForm] = useState(false); // Show inline form on button click
   const [formErrors, setFormErrors] = useState<{ name?: string; price?: string; cost?: string; stock?: string; stock_alert?: string }>({});
@@ -39,7 +34,7 @@ export default function InventoryPage() {
     price: 0,
     cost: 0,
     unit: 'piece',
-    category_id: 'cat-1',
+    category_id: '',
     category_name: '',
     production_date: '',
     expiry_date: '',
@@ -69,20 +64,71 @@ export default function InventoryPage() {
     if (product.stock <= product.stock_alert) return { text: 'منخفض' };
     return { text: 'كافي' };
   };
+
+  const handleDeleteClick = (product: Product) => {
+    setProductToDelete(product);
+  };
+
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
+    setIsDeleting(true);
+    try {
+      await api.products.delete(productToDelete.id);
+      notify.success('تم حذف المنتج بنجاح');
+      // Close modal immediately then refresh
+      setProductToDelete(null);
+      await loadProducts();
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في حذف المنتج');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    setProductToDelete(null);
+  };
   
-  // Calculate alerts
   const outOfStock = shopProducts.filter((p) => p.stock === 0).length;
   const lowStock = shopProducts.filter((p) => p.stock > 0 && p.stock <= p.stock_alert).length;
   
   // Handle add/edit with validation
   const [isSaving, setIsSaving] = useState(false);
   
+  const validateProductName = (name: string): boolean => {
+    // Must contain at least one letter, can have letters and numbers, no symbols
+    const hasLetters = /[a-zA-Z\u0600-\u06FF]/.test(name);
+    const hasOnlyLettersAndNumbers = /^[a-zA-Z0-9\u0600-\u06FF\s]+$/.test(name);
+    const numbersOnly = /^[0-9]+$/.test(name.replace(/\s/g, ''));
+    
+    if (numbersOnly) return false; // Numbers only not allowed
+    if (!hasLetters) return false; // Must have at least one letter
+    if (!hasOnlyLettersAndNumbers) return false; // No symbols allowed
+    return true;
+  };
+
   const validateForm = () => {
     const errors: { name?: string; price?: string; stock?: string; cost?: string; stock_alert?: string } = {};
     
     // Name validation
     if (!formData.name?.trim()) {
       errors.name = 'اسم المنتج مطلوب';
+    } else if (!validateProductName(formData.name)) {
+      errors.name = 'اسم المنتج يجب أن يحتوي على حروف (يمكن مع أرقام)، ولا يقبل أرقام فقط أو رموز';
+    }
+    
+    // Check for duplicate name or barcode (only when adding new)
+    if (!editingProduct && formData.name?.trim()) {
+      const nameExists = shopProducts.some(p => p.name.trim().toLowerCase() === formData.name?.trim().toLowerCase());
+      if (nameExists) {
+        errors.name = 'لا يمكن إضافة المنتج أكثر من مرة - الاسم موجود بالفعل';
+      }
+    }
+    if (!editingProduct && formData.barcode?.trim()) {
+      const barcodeExists = shopProducts.some(p => p.barcode?.trim() === formData.barcode?.trim());
+      if (barcodeExists) {
+        errors.name = 'لا يمكن إضافة المنتج أكثر من مرة - الباركود موجود بالفعل';
+      }
     }
     
     // Price validation
@@ -151,7 +197,7 @@ export default function InventoryPage() {
         price: 0,
         cost: 0,
         unit: 'piece',
-        category_id: 'cat-1',
+        category_id: '',
         category_name: '',
         production_date: '',
         expiry_date: '',
@@ -183,7 +229,7 @@ export default function InventoryPage() {
       price: 0,
       cost: 0,
       unit: 'piece',
-      category_id: 'cat-1',
+      category_id: '',
       category_name: '',
       production_date: '',
       expiry_date: '',
@@ -198,12 +244,12 @@ export default function InventoryPage() {
   
   return (
     <div 
-      className="min-h-screen transition-theme"
+      className="min-h-screen flex flex-col transition-theme"
       style={{ backgroundColor: 'var(--page-bg)' }}
     >
       <Header title="إدارة المخزون" />
       
-      <div className="p-7 space-y-6">
+      <div className="flex-1 p-7 space-y-6 overflow-auto">
         {/* Top Bar */}
         <div className="flex items-center justify-between gap-4">
           {/* Search */}
@@ -223,24 +269,31 @@ export default function InventoryPage() {
             />
           </div>
           
-          {/* Category Filter */}
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="h-[48px] rounded-lg px-4 outline-none transition-theme"
-            style={{
-              backgroundColor: 'var(--input-bg)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)',
-              minWidth: '150px'
-            }}
-          >
-            {categoryNames.map((cat: string) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+          {/* Category Filter - Text Input */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="فلترة بالفئة (اكتب هنا)"
+              value={selectedCategory === 'الكل' ? '' : selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value || 'الكل')}
+              className="h-[48px] rounded-lg px-4 outline-none transition-theme text-[14px]"
+              style={{
+                backgroundColor: 'var(--input-bg)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                minWidth: '180px'
+              }}
+            />
+            {selectedCategory !== 'الكل' && (
+              <button
+                onClick={() => setSelectedCategory('الكل')}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-[12px]"
+                style={{ backgroundColor: 'var(--text-muted)', color: 'white' }}
+              >
+                ×
+              </button>
+            )}
+          </div>
           
           {/* Add Button */}
           <Button
@@ -412,7 +465,7 @@ export default function InventoryPage() {
         
         {/* Products Table */}
         <div 
-          className="rounded-lg overflow-hidden transition-theme"
+          className="rounded-lg overflow-hidden transition-theme overflow-x-auto"
           style={{ backgroundColor: 'var(--card-bg)' }}
         >
           {/* Table Header */}
@@ -501,7 +554,7 @@ export default function InventoryPage() {
                         {product.category_name}
                       </span>
                     </div>
-                    <div className="col-span-1 text-center">
+                    <div className="col-span-1 text-center flex gap-1 justify-center">
                       <button
                         onClick={() => openEditDialog(product)}
                         className="w-8 h-8 rounded transition-all"
@@ -520,33 +573,33 @@ export default function InventoryPage() {
                       >
                         <Edit className="w-4 h-4 mx-auto" />
                       </button>
+                      <button
+                        onClick={() => handleDeleteClick(product)}
+                        className="w-8 h-8 rounded transition-all"
+                        style={{ 
+                          backgroundColor: 'var(--danger-bg)', 
+                          color: 'var(--danger)' 
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'var(--danger)';
+                          e.currentTarget.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                          e.currentTarget.style.color = 'var(--danger)';
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mx-auto" />
+                      </button>
                     </div>
                   </div>
                 );
               })
             )}
           </div>
-          
-          {/* Pagination */}
-          <div 
-            className="p-4 flex items-center justify-between transition-theme"
-            style={{ backgroundColor: 'var(--surface-1)' }}
-          >
-            <p className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>
-              عرض {filteredProducts.length} من {shopProducts.length} منتج
-            </p>
-            <div className="flex gap-2">
-              <Button variant="ghost" className="text-[14px] h-auto px-3 py-2">
-                السابق
-              </Button>
-              <Button variant="ghost" className="text-[14px] h-auto px-3 py-2">
-                التالي
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
-      
+
       {/* Add/Edit Dialog */}
       {showAddDialog && (
         <div 
@@ -663,27 +716,46 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>الفئة</label>
-                  <select
-                    value={formData.category_id}
-                    onChange={(e) => {
-                      const cat = categories.find((c: any) => c.id === e.target.value);
-                      setFormData({
-                        ...formData,
-                        category_id: e.target.value,
-                        category_name: cat?.name || 'مواد غذائية'
-                      });
-                    }}
+                  <input
+                    type="text"
+                    value={formData.category_name || ''}
+                    onChange={(e) => setFormData({ ...formData, category_name: e.target.value })}
+                    placeholder="أدخل الفئة (اختياري)"
                     className="w-full h-[44px] rounded-lg px-3 outline-none text-[14px] transition-theme"
                     style={{
                       backgroundColor: 'var(--input-bg)',
                       color: 'var(--text-primary)',
                       border: '1px solid var(--border-color)'
                     }}
-                  >
-                    {categories.map((cat: any) => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
+                  />
+                </div>
+                <div>
+                  <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>تاريخ الإنتاج</label>
+                  <input
+                    type="date"
+                    value={formData.production_date || ''}
+                    onChange={(e) => setFormData({ ...formData, production_date: e.target.value })}
+                    className="w-full h-[44px] rounded-lg px-3 outline-none text-[14px] transition-theme"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>تاريخ الانتهاء</label>
+                  <input
+                    type="date"
+                    value={formData.expiry_date || ''}
+                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                    className="w-full h-[44px] rounded-lg px-3 outline-none text-[14px] transition-theme"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)'
+                    }}
+                  />
                 </div>
               </div>
               
@@ -709,6 +781,56 @@ export default function InventoryPage() {
               >
                 {editingProduct ? 'حفظ التعديلات' : 'إضافة المنتج'}
               </LoadingButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {productToDelete && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div 
+            className="w-full max-w-[400px] rounded-lg overflow-hidden transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div 
+              className="p-4 flex items-center justify-center"
+              style={{ backgroundColor: 'var(--danger)' }}
+            >
+              <AlertCircle className="w-8 h-8 text-white" />
+            </div>
+            <div className="p-6 text-center">
+              <h3 className="text-[18px] font-bold mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                تأكيد الحذف
+              </h3>
+              <p className="text-[14px] mb-4 transition-theme" style={{ color: 'var(--text-muted)' }}>
+                هل أنت متأكد من حذف المنتج "{productToDelete.name}"؟
+              </p>
+              <p className="text-[12px] mb-6 transition-theme" style={{ color: 'var(--danger)' }}>
+                لا يمكن التراجع عن هذا الإجراء
+              </p>
+              <div className="flex gap-3">
+                <Button 
+                  variant="ghost" 
+                  onClick={cancelDelete} 
+                  fullWidth 
+                  disabled={isDeleting}
+                >
+                  إلغاء
+                </Button>
+                <LoadingButton 
+                  variant="danger" 
+                  onClick={confirmDelete} 
+                  fullWidth 
+                  loading={isDeleting}
+                  loadingText="جاري الحذف..."
+                >
+                  حذف
+                </LoadingButton>
+              </div>
             </div>
           </div>
         </div>

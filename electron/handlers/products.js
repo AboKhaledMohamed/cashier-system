@@ -9,6 +9,7 @@ function registerProductHandlers() {
       SELECT p.*, c.name as category_name 
       FROM products p 
       LEFT JOIN categories c ON p.category_id = c.id 
+      WHERE p.is_active = 1
       ORDER BY p.pos_order, p.name
     `).all();
   });
@@ -52,6 +53,20 @@ function registerProductHandlers() {
   // Create product
   ipcMain.handle('products:create', async (event, data) => {
     const db = getDb();
+    
+    // Check for duplicate product by name or barcode
+    if (data.barcode) {
+      const existingByBarcode = db.prepare('SELECT * FROM products WHERE (barcode = ? OR barcode_alt = ?) AND is_active = 1').get(data.barcode, data.barcode);
+      if (existingByBarcode) {
+        throw new Error(`الباركود "${data.barcode}" مسجل مسبقاً للمنتج "${existingByBarcode.name}"`);
+      }
+    }
+    
+    const existingByName = db.prepare('SELECT * FROM products WHERE LOWER(name) = LOWER(?) AND is_active = 1').get(data.name);
+    if (existingByName) {
+      throw new Error(`المنتج "${data.name}" موجود مسبقاً`);
+    }
+    
     const id = generateId('prod');
     
     try {
@@ -203,11 +218,38 @@ function registerProductHandlers() {
     return db.prepare('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?').get(id);
   });
 
-  // Delete product (soft delete)
+  // Delete product (soft delete) with transaction
   ipcMain.handle('products:delete', async (event, id) => {
     const db = getDb();
-    db.prepare('UPDATE products SET is_active = 0 WHERE id = ?').run(id);
-    return { success: true };
+    try {
+      // Check if product has invoice items
+      const hasInvoices = db.prepare('SELECT COUNT(*) as count FROM invoice_items WHERE product_id = ?').get(id);
+      if (hasInvoices.count > 0) {
+        console.log(`Product ${id} has ${hasInvoices.count} invoice items, performing soft delete`);
+      }
+      
+      // Perform soft delete within transaction
+      db.transaction(() => {
+        const product = db.prepare('SELECT name, barcode FROM products WHERE id = ?').get(id);
+        const result = db.prepare('UPDATE products SET is_active = 0 WHERE id = ?').run(id);
+        console.log(`Soft delete product ${id}: changed ${result.changes} rows`);
+        
+        if (result.changes === 0) {
+          throw new Error('المنتج غير موجود أو تم حذفه مسبقاً');
+        }
+        
+        // Audit log
+        db.prepare(`INSERT INTO audit_log (user_id, user_name, action, entity_type, entity_id, description)
+          VALUES (?, 'النظام', 'حذف_منتج', 'product', ?, ?)`).run(
+          userId || 'user-admin-001', id, `حذف منتج: ${product?.name || id} (${product?.barcode || 'N/A'})`
+        );
+      })();
+      
+      return { success: true, message: 'تم حذف المنتج بنجاح' };
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      throw new Error(`فشل حذف المنتج: ${error.message}`);
+    }
   });
 
   // Update stock directly
