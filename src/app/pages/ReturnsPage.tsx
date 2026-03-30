@@ -11,14 +11,14 @@
  * ✅ إدارة حالات المرتجعات
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { notify, messages } from '../utils/toast';
 import { formatNumber } from '../utils/formatters';
 import { useShop } from '../context/ShopContext';
-import { Search, Plus, X, Trash2, DollarSign, AlertTriangle, Check, Clock, UserPlus } from 'lucide-react';
+import { Search, Plus, X, Trash2, DollarSign, AlertTriangle, Check, Clock, UserPlus, Edit2 } from 'lucide-react';
 import type { Return, ReturnItem } from '../types/small-shop.types';
 
 // Mock data - empty initially for fresh database
@@ -26,10 +26,6 @@ const mockReturns: Return[] = [];
 
 const returnReasonLabels: Record<string, { label: string; color: string }> = {
   damaged: { label: 'تالف/كسر', color: '#E74C3C' },
-  defective: { label: 'معيب', color: '#E67E22' },
-  expired: { label: 'منتهي الصلاحية', color: '#F39C12' },
-  wrong_item: { label: 'منتج خاطئ', color: '#3498DB' },
-  customer_request: { label: 'طلب العميل', color: '#9B59B6' },
   other: { label: 'أخرى', color: '#7A8CA0' },
 };
 
@@ -39,12 +35,16 @@ const refundMethodLabels: Record<string, { label: string; color: string; descrip
 };
 
 export default function ReturnsPage() {
-  const { customers, loadCustomers } = useShop();
+  const { customers, loadCustomers, products, loadProducts } = useShop();
   const api = (window as any).electronAPI;
   const [returns, setReturns] = useState<Return[]>(mockReturns);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [expandedReturn, setExpandedReturn] = useState<string | null>(null);
+  
+  // Delete confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [returnToDelete, setReturnToDelete] = useState<string | null>(null);
   
   // Customer dropdown state
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -55,11 +55,77 @@ export default function ReturnsPage() {
   // Ref for customer dropdown to detect clicks outside
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   
-  // Close dropdown when clicking outside
+  // Product dropdown state and ref
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Invoice dropdown state
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [showInvoiceDropdown, setShowInvoiceDropdown] = useState(false);
+  const invoiceDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Load returns and invoices from database on mount
+  useEffect(() => {
+    loadReturns();
+    loadInvoices();
+  }, []);
+  
+  const loadReturns = async () => {
+    try {
+      const data = await api.returns.getAll();
+      // Transform database format to frontend format
+      const formattedReturns = data.map((ret: any) => ({
+        id: ret.id,
+        return_number: ret.return_number,
+        date: ret.return_date?.split(' ')[0] || new Date().toISOString().split('T')[0],
+        time: ret.return_date?.split(' ')[1]?.substring(0, 5) || '00:00',
+        user_id: ret.user_id,
+        user_name: ret.user_name || 'أحمد علي',
+        original_invoice_id: ret.original_invoice_id,
+        original_invoice_number: ret.original_invoice_number || '-',
+        customer_name: ret.customer_name || 'عميل نقدي',
+        customer_id: ret.customer_id,
+        items: (ret.items || []).map((item: any) => ({
+          id: item.id,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity_returned: item.qty_returned,
+          unit: 'piece',
+          unit_price: item.unit_price,
+          reason: 'other',
+          refund_amount: item.refund_amount,
+        })),
+        total_refund_amount: ret.refund_amount || 0,
+        refund_method: ret.refund_method === 'نقدي' ? 'cash' : 'original_payment_method',
+        created_at: ret.created_at,
+        updated_at: ret.updated_at,
+      }));
+      setReturns(formattedReturns);
+    } catch (e) {
+      console.error('Failed to load returns:', e);
+    }
+  };
+  
+  const loadInvoices = async () => {
+    try {
+      const data = await api.invoices.getAll();
+      setInvoices(data);
+    } catch (e) {
+      console.error('Failed to load invoices:', e);
+    }
+  };
+  
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
         setShowCustomerDropdown(false);
+      }
+      if (productDropdownRef.current && !productDropdownRef.current.contains(event.target as Node)) {
+        setShowProductDropdown(false);
+      }
+      if (invoiceDropdownRef.current && !invoiceDropdownRef.current.contains(event.target as Node)) {
+        setShowInvoiceDropdown(false);
       }
     };
     
@@ -84,21 +150,33 @@ export default function ReturnsPage() {
     quantity_returned: 1,
     unit: 'piece',
     unit_price: undefined,
-    reason: 'damaged',
+    reason: 'other',  // Default to 'other' (sound product)
   });
   
-  // Filter returns
-  const filteredReturns = returns.filter((ret) => {
-    const matchesSearch =
-      ret.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ret.original_invoice_number.includes(searchQuery) ||
-      ret.return_number.includes(searchQuery);
-    return matchesSearch;
-  });
+  // Filter returns with useMemo for performance
+  const filteredReturns = useMemo(() => {
+    return returns.filter((ret) => {
+      const matchesSearch =
+        ret.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ret.original_invoice_number.includes(searchQuery) ||
+        ret.return_number.includes(searchQuery);
+      return matchesSearch;
+    });
+  }, [returns, searchQuery]);
   
-  // Calculate statistics
+  // Sort returns with useMemo - expensive operation
+  const sortedReturns = useMemo(() => {
+    return [...filteredReturns].sort((a, b) => 
+      new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime()
+    );
+  }, [filteredReturns]);
+  
+  // Calculate statistics with useMemo
   const totalReturns = filteredReturns.length;
-  const totalRefundAmount = filteredReturns.reduce((sum, r) => sum + r.total_refund_amount, 0);
+  const totalRefundAmount = useMemo(() => 
+    filteredReturns.reduce((sum, r) => sum + r.total_refund_amount, 0),
+    [filteredReturns]
+  );
   
   // Customer selection handler
   const handleSelectCustomer = (customer: any) => {
@@ -141,6 +219,12 @@ export default function ReturnsPage() {
   };
 
   const handleAddItemToReturn = () => {
+    // Validate invoice is selected first
+    if (!formData.original_invoice_id) {
+      notify.error('يجب اختيار الفاتورة الأصلية أولاً');
+      return;
+    }
+    
     // Validate mandatory fields: product_name and quantity_returned
     if (!newItem.product_name?.trim()) {
       notify.error('اسم المنتج إجباري');
@@ -151,12 +235,50 @@ export default function ReturnsPage() {
       return;
     }
     
+    // Get the actual product_id - use stored one from dropdown or find by name
+    let productId = (newItem as any).product_id;
+    if (!productId) {
+      const selectedProduct = products.find((p: any) => p.name === newItem.product_name?.trim());
+      productId = selectedProduct?.id;
+    }
+    if (!productId) {
+      notify.error('يجب اختيار منتج موجود من القائمة');
+      return;
+    }
+    
+    // Validate product exists in the original invoice
+    const invoice = invoices.find((inv: any) => inv.id === formData.original_invoice_id);
+    if (!invoice) {
+      notify.error('الفاتورة الأصلية غير موجودة');
+      return;
+    }
+    
+    const invoiceItem = invoice.items?.find((item: any) => item.product_id === productId);
+    if (!invoiceItem) {
+      notify.error('هذا المنتج غير موجود في الفاتورة الأصلية');
+      return;
+    }
+    
+    // Validate returned quantity doesn't exceed invoice quantity
+    // Check already returned quantity for this product
+    const alreadyReturned = formData.items
+      ?.filter((item: any) => item.product_id === productId)
+      .reduce((sum: number, item: any) => sum + item.quantity_returned, 0) || 0;
+    
+    const totalWouldBe = alreadyReturned + newItem.quantity_returned;
+    const maxAllowed = invoiceItem.qty;
+    
+    if (totalWouldBe > maxAllowed) {
+      notify.error(`الكمية المسترجعة (${totalWouldBe}) تتجاوز الكمية في الفاتورة (${maxAllowed}). تم إرجاع ${alreadyReturned} سابقاً`);
+      return;
+    }
+    
     // Use 0 as default for unit_price if not provided (optional field)
     const unitPrice = newItem.unit_price || 0;
     
     const item: ReturnItem = {
       id: `ret-item-${Date.now()}`,
-      product_id: `prod-${Date.now()}`,
+      product_id: productId,  // Use real product_id from database
       product_name: newItem.product_name!.trim(),
       quantity_returned: newItem.quantity_returned!,
       unit: newItem.unit as any,
@@ -175,7 +297,7 @@ export default function ReturnsPage() {
       quantity_returned: 1,
       unit: 'piece',
       unit_price: undefined,
-      reason: 'damaged',
+      reason: 'other',
     });
   };
   
@@ -186,7 +308,19 @@ export default function ReturnsPage() {
     });
   };
   
-  const handleAddReturn = () => {
+  const handleAddReturn = async () => {
+    // Validate original_invoice_number is required
+    if (!formData.original_invoice_number?.trim()) {
+      notify.error('رقم الفاتورة الأصلية إجباري');
+      return;
+    }
+    
+    // Validate original_invoice_id is set (must select from dropdown)
+    if (!formData.original_invoice_id) {
+      notify.error('يجب اختيار فاتورة موجودة من القائمة المنسدلة');
+      return;
+    }
+    
     // Only items are mandatory - product name and quantity
     if (!formData.items?.length) {
       notify.error('الرجاء إضافة عناصر مسترجعة');
@@ -195,31 +329,90 @@ export default function ReturnsPage() {
     
     const totalRefund = (formData.items || []).reduce((sum, item) => sum + item.refund_amount, 0);
     
-    const newReturn: Return = {
-      id: `ret-${Date.now()}`,
-      return_number: `R-${(returns.length + 1).toString().padStart(3, '0')}`,
-      date: formData.date || new Date().toISOString().split('T')[0],
-      time: formData.time || '00:00',
-      user_id: 'user-cashier-001',
-      user_name: 'أحمد علي',
-      original_invoice_id: `inv-${Date.now()}`,
-      original_invoice_number: formData.original_invoice_number || '-',
-      customer_name: formData.customer_name || 'عميل نقدي',
-      customer_id: formData.customer_id,
-      items: formData.items || [],
-      total_refund_amount: totalRefund,
-      refund_method: formData.refund_method as any,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    console.log('[Returns] Submitting return:', { 
+      original_invoice_id: formData.original_invoice_id, 
+      original_invoice_number: formData.original_invoice_number 
+    });
     
-    setReturns([...returns, newReturn]);
-    closeDialog();
+    // Debug: Verify invoice_id is not empty
+    if (!formData.original_invoice_id || formData.original_invoice_id.trim() === '') {
+      notify.error('معرف الفاتورة فارغ - الرجاء إعادة اختيار الفاتورة');
+      return;
+    }
+    
+    try {
+      // Prepare data for database
+      const returnData = {
+        original_invoice_id: formData.original_invoice_id,
+        customer_id: formData.customer_id || null,
+        user_id: 'user-admin-001', // Use existing admin user
+        refund_amount: totalRefund,
+        refund_method: 'original_payment_method', // Always use original payment method
+        return_type: 'استرداد_نقدي',
+        items: formData.items.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          qty_returned: item.quantity_returned,
+          unit_price: item.unit_price,
+          refund_amount: item.refund_amount,
+          restock: item.reason === 'other', // Restock only if reason is 'other' (sound product)
+          condition: item.reason === 'other' ? 'سليم' : 'تالف'
+        }))
+      };
+      
+      // Save to database
+      const savedReturn = await api.returns.create(returnData);
+      
+      // Add to local state
+      const newReturn: Return = {
+        id: savedReturn.id,
+        return_number: savedReturn.return_number,
+        date: savedReturn.return_date?.split(' ')[0] || new Date().toISOString().split('T')[0],
+        time: savedReturn.return_date?.split(' ')[1]?.substring(0, 5) || '00:00',
+        user_id: savedReturn.user_id,
+        user_name: 'أحمد علي',
+        original_invoice_id: savedReturn.original_invoice_id,
+        original_invoice_number: formData.original_invoice_number || '-',
+        customer_name: formData.customer_name || 'عميل نقدي',
+        customer_id: savedReturn.customer_id,
+        items: formData.items || [],
+        total_refund_amount: totalRefund,
+        refund_method: 'original_payment_method' as any,
+        created_at: savedReturn.created_at,
+        updated_at: savedReturn.updated_at,
+      };
+      
+      setReturns([...returns, newReturn]);
+      notify.success(`تم تسجيل المسترجعة بنجاح - الفاتورة الأصلية: ${formData.original_invoice_number || '-'}`);
+      closeDialog();
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في تسجيل المسترجعة');
+    }
   };
-  
+
   const handleDeleteReturn = (id: string) => {
-    if (confirm('هل تريد حذف هذه المسترجعة؟')) {
-      setReturns(returns.filter((r) => r.id !== id));
+    setReturnToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!returnToDelete) return;
+    
+    try {
+      setShowDeleteConfirm(false);
+      // Close expanded return if open
+      if (expandedReturn === returnToDelete) {
+        setExpandedReturn(null);
+      }
+      // Delete from backend
+      await api.returns.delete(returnToDelete);
+      // Update state
+      setReturns(prev => prev.filter((r) => r.id !== returnToDelete));
+      notify.success('تم حذف المسترجعة بنجاح');
+    } catch (e: any) {
+      notify.error(e.message || 'فشل في حذف المرتجعة');
+    } finally {
+      setReturnToDelete(null);
     }
   };
   
@@ -227,10 +420,12 @@ export default function ReturnsPage() {
     setShowAddDialog(false);
     setShowCustomerDropdown(false);
     setShowAddCustomerForm(false);
+    setShowInvoiceDropdown(false);
     setFormData({
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('ar-EG', { hour12: false }).slice(0, 5),
       original_invoice_number: '',
+      original_invoice_id: '',
       customer_name: '',
       customer_id: '',
       refund_method: 'cash',
@@ -241,7 +436,7 @@ export default function ReturnsPage() {
       quantity_returned: 1,
       unit: 'piece',
       unit_price: undefined,
-      reason: 'damaged',
+      reason: 'other',
     });
   };
   
@@ -345,14 +540,12 @@ export default function ReturnsPage() {
             className="divide-y transition-theme"
             style={{ borderColor: 'var(--surface-1)' }}
           >
-            {filteredReturns.length === 0 ? (
+            {sortedReturns.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-[16px] transition-theme" style={{ color: 'var(--text-muted)' }}>لا توجد مرتجعات</p>
               </div>
             ) : (
-              filteredReturns
-                .sort((a, b) => new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime())
-                .map((ret) => (
+              sortedReturns.map((ret) => (
                   <div key={ret.id}>
                     {/* Header */}
                     <div
@@ -372,10 +565,8 @@ export default function ReturnsPage() {
                         </div>
                         
                         <div className="col-span-2">
-                          <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>
-                            {ret.customer_name}
-                          </p>
-                          <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>
+                          <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>الفاتورة الأصلية</p>
+                          <p className="text-[14px] font-bold transition-theme" style={{ color: 'var(--primary)' }}>
                             {ret.original_invoice_number}
                           </p>
                         </div>
@@ -543,17 +734,72 @@ export default function ReturnsPage() {
                   }
                 />
                 
-                <Input
-                  label="رقم الفاتورة الأصلية"
-                  value={formData.original_invoice_number}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      original_invoice_number: e.target.value,
-                    })
-                  }
-                  placeholder=""
-                />
+                {/* Invoice Searchable Dropdown */}
+                <div className="relative" ref={invoiceDropdownRef}>
+                  <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                    رقم الفاتورة الأصلية *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.original_invoice_number}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData({ ...formData, original_invoice_number: value });
+                      setShowInvoiceDropdown(value.trim().length > 0);
+                    }}
+                    placeholder="ابحث عن فاتورة..."
+                    className="w-full h-[44px] rounded-lg px-3 text-[14px] outline-none transition-theme"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)'
+                    }}
+                  />
+                  
+                  {/* Invoice Dropdown */}
+                  {showInvoiceDropdown && formData.original_invoice_number?.trim() && invoices.length > 0 && (
+                    <div 
+                      className="absolute z-10 w-full mt-2 rounded-lg shadow-xl max-h-[250px] overflow-y-auto transition-theme"
+                      style={{
+                        backgroundColor: 'var(--card-bg)',
+                        border: '1px solid var(--border-color)'
+                      }}
+                    >
+                      {invoices
+                        .filter((inv: any) => inv.invoice_number.toLowerCase().includes((formData.original_invoice_number || '').toLowerCase()))
+                        .slice(0, 20)
+                        .map((invoice: any) => (
+                          <div
+                            key={invoice.id}
+                            onClick={() => {
+                              console.log('[Returns] Selected invoice:', invoice.id, invoice.invoice_number);
+                              setFormData({ 
+                                ...formData, 
+                                original_invoice_number: invoice.invoice_number,
+                                original_invoice_id: invoice.id,
+                                customer_name: invoice.customer_name || '',
+                                customer_id: invoice.customer_id || ''
+                              });
+                              setShowInvoiceDropdown(false);
+                            }}
+                            className="flex items-center justify-between p-3 cursor-pointer border-b last:border-0 transition-theme"
+                            style={{ borderColor: 'var(--border-color)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-1)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            <div>
+                              <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{invoice.invoice_number}</p>
+                              <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>{invoice.customer_name || 'عميل نقدي'} | {invoice.total} ج</p>
+                            </div>
+                            <Plus className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                          </div>
+                        ))}
+                      {invoices.filter((inv: any) => inv.invoice_number.toLowerCase().includes((formData.original_invoice_number || '').toLowerCase())).length === 0 && (
+                        <div className="p-3 text-center text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>لا توجد فواتير مطابقة</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               
               {/* Customer Selection with Dropdown */}
@@ -730,17 +976,69 @@ export default function ReturnsPage() {
                   </h5>
                   
                   <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      label="اسم المنتج *"
-                      value={newItem.product_name}
-                      onChange={(e) =>
-                        setNewItem({
-                          ...newItem,
-                          product_name: e.target.value,
-                        })
-                      }
-                      placeholder=""
-                    />
+                    {/* Product Searchable Dropdown */}
+                    <div className="relative" ref={productDropdownRef}>
+                      <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                        اسم المنتج *
+                      </label>
+                      <input
+                        type="text"
+                        value={newItem.product_name}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setNewItem({ ...newItem, product_name: value });
+                          setShowProductDropdown(value.trim().length > 0);
+                        }}
+                        placeholder="ابحث عن منتج..."
+                        className="w-full h-[44px] rounded-lg px-3 text-[14px] outline-none transition-theme"
+                        style={{
+                          backgroundColor: 'var(--input-bg)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      />
+                      
+                      {/* Product Dropdown */}
+                      {showProductDropdown && newItem.product_name?.trim() && products.length > 0 && (
+                        <div 
+                          className="absolute z-10 w-full mt-2 rounded-lg shadow-xl max-h-[250px] overflow-y-auto transition-theme"
+                          style={{
+                            backgroundColor: 'var(--card-bg)',
+                            border: '1px solid var(--border-color)'
+                          }}
+                        >
+                          {products
+                            .filter((p: any) => p.name.toLowerCase().includes((newItem.product_name || '').toLowerCase()))
+                            .map((product: any) => (
+                              <div
+                                key={product.id}
+                                onClick={() => {
+                                  setNewItem({ 
+                                    ...newItem, 
+                                    product_name: product.name,
+                                    unit_price: product.price,
+                                    product_id: product.id  // Store product_id for later use
+                                  });
+                                  setShowProductDropdown(false);
+                                }}
+                                className="flex items-center justify-between p-3 cursor-pointer border-b last:border-0 transition-theme"
+                                style={{ borderColor: 'var(--border-color)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-1)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <div>
+                                  <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>{product.name}</p>
+                                  <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>مخزون: {product.stock} | {product.price} ج</p>
+                                </div>
+                                <Plus className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                              </div>
+                            ))}
+                          {products.filter((p: any) => p.name.toLowerCase().includes((newItem.product_name || '').toLowerCase())).length === 0 && (
+                            <div className="p-3 text-center text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>لا يوجد منتجات مطابقة</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     
                     <div>
                       <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
@@ -858,36 +1156,25 @@ export default function ReturnsPage() {
                 </div>
               </div>
               
-              {/* Refund Settings */}
+              {/* Refund Settings - Fixed to Original Payment Method */}
               <div>
                 <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
                   طريقة الإرجاع
                 </label>
-                <select
-                  value={formData.refund_method}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      refund_method: e.target.value as any,
-                    })
-                  }
-                  className="w-full h-[44px] rounded-lg px-3 outline-none transition-theme"
+                <div 
+                  className="w-full h-[44px] rounded-lg px-3 flex items-center transition-theme"
                   style={{
-                    backgroundColor: 'var(--input-bg)',
+                    backgroundColor: 'var(--surface-1)',
                     color: 'var(--text-primary)',
                     border: '1px solid var(--border-color)'
                   }}
                 >
-                  {Object.entries(refundMethodLabels).map(([key, val]) => (
-                    <option key={key} value={key}>
-                      {val.label} - {val.description}
-                    </option>
-                  ))}
-                </select>
+                  <span className="text-[14px]">الطريقة الأصلية (كاش/آجل)</span>
+                </div>
                 <p className="text-[12px] mt-1 transition-theme" style={{ color: 'var(--text-muted)' }}>
-                  {formData.refund_method === 'cash' 
-                    ? 'سيتم إرجاع المبلغ نقدياً للعميل' 
-                    : 'إذا كانت الفاتورة الأصلية آجل، سيتم خصم المبلغ من ديون العميل. إذا كانت كاش، سيتم إرجاع النقد.'}
+                  {invoices.find((inv: any) => inv.id === formData.original_invoice_id)?.payment_method === 'آجل' 
+                    ? 'سيتم خصم المبلغ من ديون العميل تلقائياً' 
+                    : 'سيتم خصم المبلغ من إجمالي الإيرادات (المبيعات)'}
                 </p>
               </div>
               
@@ -905,6 +1192,50 @@ export default function ReturnsPage() {
               </Button>
               <Button variant="warning" onClick={handleAddReturn} fullWidth>
                 تسجيل المسترجعة
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div 
+            className="w-full max-w-[400px] rounded-lg p-6 text-center transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div 
+              className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ backgroundColor: 'var(--danger-bg)' }}
+            >
+              <Trash2 className="w-8 h-8" style={{ color: 'var(--danger)' }} />
+            </div>
+            <h3 className="text-[20px] font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+              تأكيد الحذف
+            </h3>
+            <p className="text-[14px] mb-6" style={{ color: 'var(--text-muted)' }}>
+              هل أنت متأكد من حذف هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.
+            </p>
+            <div className="flex gap-3">
+              <Button 
+                variant="ghost" 
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setReturnToDelete(null);
+                }} 
+                fullWidth
+              >
+                إلغاء
+              </Button>
+              <Button 
+                variant="danger" 
+                onClick={confirmDelete} 
+                fullWidth
+              >
+                حذف
               </Button>
             </div>
           </div>

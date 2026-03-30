@@ -782,6 +782,20 @@ function runMigrations() {
     3: {
       sql: `ALTER TABLE expenses ADD COLUMN user_name TEXT;`,
       description: 'Add user_name column to expenses table'
+    },
+    4: {
+      sql: `
+        -- Migration 4: Update invoice status check constraint
+        -- Note: SQLite doesn't support ALTER TABLE for CHECK constraints
+        -- The constraint is only checked on INSERT/UPDATE, so we just ensure the application
+        -- uses the new status values ('مرتجع_جزئي', 'مرتجع_بالكامل')
+        -- The schema file has been updated for new databases
+        
+        -- Update any existing 'مرتجع' status to use the new granular statuses
+        -- This is optional and based on your data
+        -- UPDATE invoices SET status = 'مرتجع_بالكامل' WHERE status = 'مرتجع';
+      `,
+      description: 'Prepare for new invoice return statuses (schema updated for new DBs)'
     }
   };
 

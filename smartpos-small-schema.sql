@@ -357,7 +357,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 
     -- الحالة
     status                  TEXT    NOT NULL DEFAULT 'مكتمل'
-                                    CHECK (status IN ('مكتمل','معلق','ملغي','مرتجع')),
+                                    CHECK (status IN ('مكتمل','معلق','ملغي','مرتجع','مرتجع_جزئي','مرتجع_بالكامل')),
     void_reason             TEXT,
     printed_count           INTEGER NOT NULL DEFAULT 0,
     notes                   TEXT,

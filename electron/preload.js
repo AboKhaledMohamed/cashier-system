@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: () => ipcRenderer.invoke('returns:getAll'),
     getById: (id) => ipcRenderer.invoke('returns:getById', id),
     create: (data) => ipcRenderer.invoke('returns:create', data),
+    delete: (id) => ipcRenderer.invoke('returns:delete', id),
     getByInvoice: (invoiceId) => ipcRenderer.invoke('returns:getByInvoice', invoiceId),
   },
 

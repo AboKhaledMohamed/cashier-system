@@ -173,9 +173,24 @@ export default function POSPage() {
   };
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
   
   // Ref for customer dropdown to detect clicks outside
   const customerDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchDropdownRef.current && !searchDropdownRef.current.contains(event.target as Node)) {
+        setSearchQuery('');
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   
   // Close customer dropdown when clicking outside
   useEffect(() => {
@@ -647,6 +662,8 @@ export default function POSPage() {
       if (e.key === 'F2') {
         e.preventDefault();
         searchInputRef.current?.focus();
+        // Show all products in dropdown
+        setSearchQuery(' ');
       } else if (e.key === 'F4') {
         e.preventDefault();
         // Only suspend if there are items
@@ -777,6 +794,7 @@ export default function POSPage() {
           <div className="flex-1 flex flex-col gap-4">
             {/* Search Bar */}
             <div 
+              ref={searchDropdownRef}
               className="rounded-lg p-3 transition-theme relative"
               style={{ backgroundColor: 'var(--card-bg)' }}
             >
