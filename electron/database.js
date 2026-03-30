@@ -737,8 +737,25 @@ function seedData() {
   db.prepare(`INSERT INTO categories (id, name, color, pos_order, is_active) 
     VALUES ('cat-1', 'مواد غذائية', '#22c55e', 0, 1)`).run();
 
+  // Add expense categories
+  const expenseCategories = [
+    { id: 'ec-1', name: 'إيجار' },
+    { id: 'ec-2', name: 'كهرباء' },
+    { id: 'ec-3', name: 'مياه' },
+    { id: 'ec-4', name: 'رواتب' },
+    { id: 'ec-5', name: 'صيانة' },
+    { id: 'ec-6', name: 'نقل' },
+    { id: 'ec-7', name: 'مستلزمات' },
+  ];
+  
+  for (const cat of expenseCategories) {
+    db.prepare(`INSERT OR IGNORE INTO expense_categories (id, name, is_active) 
+      VALUES (?, ?, 1)`).run(cat.id, cat.name);
+  }
+
   console.log('Admin user created: admin / admin123 (must change password)');
   console.log('Default category created');
+  console.log('Expense categories created');
 }
 
 /**
@@ -749,7 +766,23 @@ function runMigrations() {
 
   // Define migrations as version => { sql, description }
   const migrations = {
-    // Future migrations go here
+    2: {
+      sql: `
+        -- Insert expense categories if they don't exist
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-1', 'إيجار', 1);
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-2', 'كهرباء', 1);
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-3', 'مياه', 1);
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-4', 'رواتب', 1);
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-5', 'صيانة', 1);
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-6', 'نقل', 1);
+        INSERT OR IGNORE INTO expense_categories (id, name, is_active) VALUES ('ec-7', 'مستلزمات', 1);
+      `,
+      description: 'Add expense categories'
+    },
+    3: {
+      sql: `ALTER TABLE expenses ADD COLUMN user_name TEXT;`,
+      description: 'Add user_name column to expenses table'
+    }
   };
 
   for (const [version, migration] of Object.entries(migrations)) {

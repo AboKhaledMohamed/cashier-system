@@ -11,7 +11,8 @@
  * ✅ إرجاع أو حذف المصاريف
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useShop } from '../context/ShopContext';
 import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -27,21 +28,20 @@ import {
 } from 'lucide-react';
 import type { Expense, ExpenseCategory } from '../types/small-shop.types';
 
-// Mock data - empty initially for fresh database
-const mockExpenses: Expense[] = [];
-
-const expenseCategoryLabels: Record<ExpenseCategory, { label: string; color: string }> = {
-  rent: { label: 'إيجار', color: '#E74C3C' },
-  electricity: { label: 'كهرباء', color: '#F39C12' },
-  water: { label: 'مياه', color: '#3498DB' },
-  salary: { label: 'رواتب', color: '#9B59B6' },
-  supplies: { label: 'مستلزمات', color: '#2ECC71' },
-  maintenance: { label: 'صيانة', color: '#E67E22' },
-  other: { label: 'أخرى', color: '#7A8CA0' },
+const expenseCategoryLabels: Record<ExpenseCategory, { label: string; color: string; dbId: string }> = {
+  rent: { label: 'إيجار', color: '#E74C3C', dbId: 'ec-1' },
+  electricity: { label: 'كهرباء', color: '#F39C12', dbId: 'ec-2' },
+  water: { label: 'مياه', color: '#3498DB', dbId: 'ec-3' },
+  salary: { label: 'رواتب', color: '#9B59B6', dbId: 'ec-4' },
+  maintenance: { label: 'صيانة', color: '#E67E22', dbId: 'ec-5' },
+  supplies: { label: 'مستلزمات', color: '#2ECC71', dbId: 'ec-7' },
+  other: { label: 'أخرى', color: '#7A8CA0', dbId: 'ec-7' },
 };
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
+  const api = (window as any).electronAPI;
+  const { currentUser } = useShop();
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | 'all'>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -55,6 +55,52 @@ export default function ExpensesPage() {
     description: '',
     notes: '',
   });
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Load expenses from database on mount
+  useEffect(() => {
+    loadExpenses();
+  }, []);
+  
+  const loadExpenses = async () => {
+    try {
+      setIsLoading(true);
+      console.log('Loading expenses...');
+      const data = await api.expenses.getAll();
+      console.log('Raw expenses from DB:', data);
+      // Reverse mapping from dbId to category key
+      const dbIdToCategory: Record<string, ExpenseCategory> = {
+        'ec-1': 'rent',
+        'ec-2': 'electricity',
+        'ec-3': 'water',
+        'ec-4': 'salary',
+        'ec-5': 'maintenance',
+        'ec-6': 'other',
+        'ec-7': 'supplies',
+      };
+      // Map database fields to Expense interface
+      const mappedExpenses: Expense[] = data.map((item: any) => ({
+        id: item.id,
+        expense_number: item.id.slice(-6).toUpperCase(),
+        date: item.date,
+        time: item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US', { hour12: false }).slice(0, 5) : '00:00',
+        user_id: item.user_id || 'unknown',
+        user_name: item.user_name || item.user_id || 'غير معروف',
+        category: (dbIdToCategory[item.category_id] || 'other') as ExpenseCategory,
+        amount: item.amount,
+        description: item.description,
+        notes: item.notes,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+      }));
+      console.log('Mapped expenses:', mappedExpenses);
+      setExpenses(mappedExpenses);
+    } catch (err: any) {
+      notify.error(err.message || 'فشل في تحميل المصاريف');
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Filter expenses
   const filteredExpenses = expenses.filter((expense) => {
@@ -93,7 +139,7 @@ export default function ExpensesPage() {
       .reduce((sum, e) => sum + e.amount, 0),
   }));
   
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!formData.amount || formData.amount <= 0) {
       notify.error('الرجاء إدخال مبلغ صحيح');
       return;
@@ -104,28 +150,83 @@ export default function ExpensesPage() {
       return;
     }
     
-    const newExpense: Expense = {
-      id: `exp-${Date.now()}`,
-      expense_number: `EXP-${(expenses.length + 1).toString().padStart(3, '0')}`,
-      date: formData.date || new Date().toISOString().split('T')[0],
-      time: formData.time || '00:00',
-      user_id: 'user-manager-001', // Should come from logged in user
-      user_name: 'فاطمة محمود',
-      category: formData.category as ExpenseCategory,
-      amount: formData.amount!,
-      description: formData.description!,
-      notes: formData.notes,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    // Debug: Log currentUser details
+    console.log('Current user object:', currentUser);
+    console.log('Current user ID:', currentUser?.id);
     
-    setExpenses([...expenses, newExpense]);
-    closeDialog();
+    // Validate user is logged in
+    const userId = currentUser?.id;
+    console.log('Extracted userId:', userId);
+    
+    if (!userId) {
+      notify.error('يجب تسجيل الدخول أولاً لإضافة مصروفة');
+      return;
+    }
+    
+    const categoryDbId = expenseCategoryLabels[formData.category as ExpenseCategory]?.dbId;
+    if (!categoryDbId) {
+      notify.error('التصنيف غير صالح');
+      return;
+    }
+    
+    // Debug logging
+    console.log('Creating expense with:', {
+      category_id: categoryDbId,
+      user_id: userId,
+      amount: formData.amount,
+      description: formData.description,
+    });
+    
+    try {
+      setIsLoading(true);
+      
+      // Save to database via API with current user
+      await api.expenses.create({
+        category_id: categoryDbId,
+        category_name: expenseCategoryLabels[formData.category as ExpenseCategory]?.label,
+        amount: formData.amount,
+        description: formData.description,
+        date: formData.date,
+        notes: formData.notes,
+        method: 'نقدي',
+        user_id: userId,
+        user_name: currentUser?.username || 'غير معروف',
+      });
+      
+      // Reload expenses from database
+      await loadExpenses();
+      
+      closeDialog();
+      notify.success('تم إضافة المصروفة بنجاح');
+    } catch (err: any) {
+      console.error('Expense creation error:', err);
+      // Enhanced error message for FK constraint
+      if (err.message?.includes('FOREIGN KEY')) {
+        notify.error('خطأ في قاعدة البيانات: المستخدم أو التصنيف غير موجود. يرجى التحقق من تسجيل الدخول.');
+      } else {
+        notify.error(err.message || 'فشل في حفظ المصروفة');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
   
-  const handleDeleteExpense = (id: string) => {
-    if (confirm('هل تريد حذف هذه المصروفة؟')) {
-      setExpenses(expenses.filter((e) => e.id !== id));
+  const handleDeleteExpense = async (id: string) => {
+    // Optimistic update - remove from UI immediately without blocking
+    const deletedExpense = expenses.find(e => e.id === id);
+    if (!deletedExpense) return;
+    
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    
+    try {
+      await api.expenses.delete(id);
+      notify.success('تم حذف المصروفة');
+    } catch (err: any) {
+      // Restore on error
+      setExpenses(prev => [...prev, deletedExpense].sort((a, b) => 
+        new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime()
+      ));
+      notify.error(err.message || 'فشل في حذف المصروفة');
     }
   };
   
@@ -147,6 +248,29 @@ export default function ExpensesPage() {
       style={{ backgroundColor: 'var(--page-bg)' }}
     >
       <Header title="المصاريف التشغيلية" />
+      
+      {/* Login Required Warning */}
+      {!currentUser && (
+        <div 
+          className="mx-7 mt-4 p-4 rounded-lg flex items-center gap-3"
+          style={{ backgroundColor: 'var(--warning-bg)', border: '1px solid var(--warning)' }}
+        >
+          <div 
+            className="w-10 h-10 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'var(--warning)' }}
+          >
+            <span style={{ color: 'white', fontSize: '18px' }}>⚠️</span>
+          </div>
+          <div>
+            <p className="font-bold" style={{ color: 'var(--warning)' }}>
+              تسجيل الدخول مطلوب
+            </p>
+            <p className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+              يجب تسجيل الدخول لإضافة أو حذف المصاريف. يمكنك مشاهدة المصاريف الحالية فقط.
+            </p>
+          </div>
+        </div>
+      )}
       
       <div className="p-7 space-y-6">
         {/* Top Bar */}
@@ -203,8 +327,16 @@ export default function ExpensesPage() {
           
           <Button
             variant="info"
-            onClick={() => setShowAddDialog(true)}
+            onClick={() => {
+              if (!currentUser) {
+                notify.error('يجب تسجيل الدخول أولاً لإضافة مصروفة');
+                return;
+              }
+              setShowAddDialog(true);
+            }}
+            disabled={!currentUser}
             className="flex items-center gap-2 whitespace-nowrap"
+            style={!currentUser ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
           >
             <Plus className="w-5 h-5" />
             إضافة مصروفة

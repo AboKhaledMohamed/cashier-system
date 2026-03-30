@@ -439,7 +439,7 @@ export default function POSPage() {
   // COMPLETE SALE — إتمام البيع
   // ============================================================================
 
-  const completeSale = async () => {
+  const completeSale = async (skipReceipt: boolean = false) => {
     if (cartItems.length === 0) {
       notify.error('السلة فارغة');
       return;
@@ -576,10 +576,16 @@ export default function POSPage() {
         invoice_number: savedInvoice.invoice_number, // Use the actual invoice number from database
       };
 
-      // Show receipt with correct invoice number
-      setInvoiceDataForReceipt(finalInvoiceData);
-      setShowReceipt(true);
-      notify.success('تم إتمام البيع بنجاح');
+      // Show receipt with correct invoice number (unless skipped)
+      if (skipReceipt) {
+        // Skip receipt and reset sale directly
+        resetSale();
+        notify.success('تم إتمام البيع بنجاح');
+      } else {
+        setInvoiceDataForReceipt(finalInvoiceData);
+        setShowReceipt(true);
+        notify.success('تم إتمام البيع بنجاح');
+      }
     } catch (err: any) {
       notify.error(err.message || 'فشل في حفظ الفاتورة');
     }
@@ -599,7 +605,7 @@ export default function POSPage() {
   // ============================================================================
 
   // Ref to access completeSale function - MUST be declared before keyboard effect
-  const completeSaleRef = useRef<() => void>(null);
+  const completeSaleRef = useRef<(skipReceipt?: boolean) => void>(null);
   useEffect(() => { completeSaleRef.current = completeSale; }, [completeSale]);
 
   // Ref to access completeSaleAndPrint function
@@ -662,6 +668,15 @@ export default function POSPage() {
         setShowSuspendedInvoices(!currentShowSuspendedInvoices);
       } else if (e.key === 'F10') {
         e.preventDefault();
+        // Complete sale only (no receipt)
+        if (currentCartItems.length === 0) {
+          notify.error('السلة فارغة');
+          return;
+        }
+        // Trigger completeSale with skipReceipt=true through a ref callback
+        completeSaleRef.current?.(true);
+      } else if (e.key === 'F12') {
+        e.preventDefault();
         // Complete sale and print
         if (currentCartItems.length === 0) {
           notify.error('السلة فارغة');
@@ -669,15 +684,6 @@ export default function POSPage() {
         }
         // Trigger completeSaleAndPrint through a ref callback
         completeSaleAndPrintRef.current?.();
-      } else if (e.key === 'F12') {
-        e.preventDefault();
-        // Complete sale logic inline to avoid dependency issues
-        if (currentCartItems.length === 0) {
-          notify.error('السلة فارغة');
-          return;
-        }
-        // Trigger completeSale through a ref callback
-        completeSaleRef.current?.();
       }
     };
 
@@ -771,7 +777,7 @@ export default function POSPage() {
           <div className="flex-1 flex flex-col gap-4">
             {/* Search Bar */}
             <div 
-              className="rounded-lg p-3 transition-theme"
+              className="rounded-lg p-3 transition-theme relative"
               style={{ backgroundColor: 'var(--card-bg)' }}
             >
               <p className="text-[13px] mb-2 transition-theme" style={{ color: 'var(--text-secondary)' }}>بحث سريع عن منتج</p>
@@ -795,7 +801,7 @@ export default function POSPage() {
               {/* Search Results */}
               {showSearchResults && searchResults.length > 0 && (
                 <div 
-                  className="absolute z-10 w-full mt-2 rounded-lg shadow-2xl max-h-[300px] overflow-y-auto transition-theme"
+                  className="absolute z-10 left-3 right-3 mt-2 rounded-lg shadow-2xl max-h-[300px] overflow-y-auto transition-theme"
                   style={{
                     backgroundColor: 'var(--input-bg)',
                     border: '1px solid var(--border-color)'
@@ -1026,16 +1032,16 @@ export default function POSPage() {
               <div>
                 <kbd 
                   className="px-2 py-1 rounded font-bold text-[12px] transition-theme"
-                  style={{ backgroundColor: 'var(--surface-1)', color: 'var(--success)' }}
+                  style={{ backgroundColor: 'var(--surface-1)', color: 'var(--primary)' }}
                 >F10</kbd>
-                <p className="text-[10px] transition-theme" style={{ color: 'var(--text-muted)' }}>طباعة</p>
+                <p className="text-[10px] transition-theme" style={{ color: 'var(--text-muted)' }}>حفظ</p>
               </div>
               <div>
                 <kbd 
                   className="px-2 py-1 rounded font-bold text-[12px] transition-theme"
-                  style={{ backgroundColor: 'var(--surface-1)', color: 'var(--primary)' }}
+                  style={{ backgroundColor: 'var(--surface-1)', color: 'var(--success)' }}
                 >F12</kbd>
-                <p className="text-[10px] transition-theme" style={{ color: 'var(--text-muted)' }}>إتمام</p>
+                <p className="text-[10px] transition-theme" style={{ color: 'var(--text-muted)' }}>طباعة</p>
               </div>
             </div>
 
@@ -1455,12 +1461,12 @@ export default function POSPage() {
               <Button
                 variant="primary"
                 fullWidth
-                onClick={completeSale}
+                onClick={() => completeSale(true)}
                 disabled={cartItems.length === 0 || (paymentMethod === 'credit' && !selectedCustomer)}
                 size="large"
                 className="text-[16px]"
               >
-                حفظ (F12)
+                حفظ (F10)
               </Button>
               <Button
                 variant="success"
@@ -1471,7 +1477,7 @@ export default function POSPage() {
                 className="text-[16px] flex items-center justify-center gap-2"
               >
                 <Printer className="w-5 h-5" />
-                حفظ وطباعة (F10)
+                حفظ وطباعة (F12)
               </Button>
             </div>
 
