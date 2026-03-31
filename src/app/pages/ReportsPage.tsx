@@ -202,11 +202,13 @@ export default function ReportsPage() {
                   setDateTo(dateStr);
                 } else if (e.target.value === 'monthly') {
                   const year = todayBtn.getFullYear();
-                  const month = String(todayBtn.getMonth() + 1).padStart(2, '0');
-                  setDateFrom(`${year}-${month}-01`);
+                  const month = todayBtn.getMonth();
+                  const monthStr = String(month + 1).padStart(2, '0');
+                  setDateFrom(`${year}-${monthStr}-01`);
                   
-                  const endOfMonth = new Date(year, todayBtn.getMonth() + 1, 0);
-                  setDateTo(endOfMonth.toISOString().split('T')[0]);
+                  // Get last day of month (handles 28/29/30/31 days)
+                  const lastDay = new Date(year, month + 1, 0).getDate();
+                  setDateTo(`${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`);
                 }
               }}
               className="h-[36px] rounded-lg px-3 outline-none transition-theme text-[14px]"

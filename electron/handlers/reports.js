@@ -7,10 +7,17 @@ function registerReportHandlers() {
     const db = getDb();
     const today = new Date().toISOString().split('T')[0];
     
-    // Calculate current month range
+    // Calculate current month range (YYYY-MM-DD format for SQL)
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-12
+    const monthStr = String(month).padStart(2, '0');
+    
+    const monthStart = `${year}-${monthStr}-01`; // First day: YYYY-MM-01
+    
+    // Last day of month (handles 28/29/30/31 automatically)
+    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+    const monthEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
     const todaySales = db.prepare(`
       SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total

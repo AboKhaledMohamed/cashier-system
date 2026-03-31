@@ -691,15 +691,15 @@ export default function ReturnsPage() {
       {/* Add Return Dialog */}
       {showAddDialog && (
         <div 
-          className="fixed inset-0 flex items-center justify-center z-50 overflow-y-auto"
+          className="fixed inset-0 flex items-center justify-center z-50"
           style={{ backgroundColor: 'var(--overlay-bg)' }}
         >
           <div 
-            className="w-full max-w-[800px] rounded-lg overflow-hidden my-4 transition-theme"
+            className="w-full max-w-[750px] max-h-[75vh] rounded-lg overflow-hidden transition-theme flex flex-col"
             style={{ backgroundColor: 'var(--card-bg)' }}
           >
             <div 
-              className="p-4 flex items-center justify-between sticky top-0"
+              className="p-4 flex items-center justify-between flex-shrink-0"
               style={{ backgroundColor: 'var(--accent-orange)' }}
             >
               <h3 className="text-[21px] font-bold" style={{ color: 'white' }}>
@@ -713,9 +713,9 @@ export default function ReturnsPage() {
               </button>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-4 space-y-3 overflow-y-auto">
               {/* Basic Info */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <Input
                   label="التاريخ *"
                   type="date"
@@ -927,18 +927,18 @@ export default function ReturnsPage() {
               
               {/* Items Section */}
               <div 
-                className="rounded-lg p-4 transition-theme"
+                className="rounded-lg p-3 transition-theme"
                 style={{ backgroundColor: 'var(--surface-1)' }}
               >
-                <h4 className="text-[16px] font-bold mb-4 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                <h4 className="text-[15px] font-bold mb-3 transition-theme" style={{ color: 'var(--text-primary)' }}>
                   العناصر المسترجعة
                 </h4>
                 
-                <div className="space-y-3 mb-4">
+                <div className="space-y-2 mb-3">
                   {formData.items?.map((item, idx) => (
                     <div
                       key={item.id}
-                      className="p-3 rounded-lg flex justify-between items-start transition-theme"
+                      className="p-2 rounded-lg flex justify-between items-start transition-theme"
                       style={{ backgroundColor: 'var(--card-bg)' }}
                     >
                       <div className="flex-1">
@@ -968,14 +968,14 @@ export default function ReturnsPage() {
                 
                 {/* Add Item Form */}
                 <div 
-                  className="border-t pt-4 space-y-3 transition-theme"
+                  className="border-t pt-3 space-y-2 transition-theme"
                   style={{ borderColor: 'var(--border-color)' }}
                 >
-                  <h5 className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  <h5 className="text-[13px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>
                     إضافة عنصر جديد
                   </h5>
                   
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     {/* Product Searchable Dropdown */}
                     <div className="relative" ref={productDropdownRef}>
                       <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>

@@ -45,6 +45,15 @@ export default function CustomersPage() {
   const [showAddForm, setShowAddForm] = useState(false); // Show inline form on button click
   const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string }>({});
   
+  // Check for duplicate customer name
+  const isDuplicateName = (name: string, excludeId?: string) => {
+    return customers.some(
+      (c) =>
+        c.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+        c.id !== excludeId
+    );
+  };
+  
   const [formData, setFormData] = useState<Partial<Customer>>({
     name: '',
     phone: '',
@@ -76,8 +85,10 @@ export default function CustomersPage() {
     const errors: { name?: string; phone?: string } = {};
     if (!formData.name?.trim()) {
       errors.name = 'اسم العميل مطلوب';
-    } else if (!/^[\u0600-\u06FFa-zA-Z0-9\s]+$/.test(formData.name.trim())) {
+    } else if (!/^[؀-ۿa-zA-Z0-9\s]+$/.test(formData.name.trim())) {
       errors.name = 'اسم العميل يجب أن يحتوي على حروف وأرقام فقط بدون رموز';
+    } else if (isDuplicateName(formData.name, editingCustomer?.id)) {
+      errors.name = 'هذا الاسم مستخدم بالفعل، يرجى استخدام اسم آخر';
     }
     if (!formData.phone?.trim()) errors.phone = 'رقم التليفون مطلوب';
     setFormErrors(errors);
@@ -314,9 +325,8 @@ export default function CustomersPage() {
               <Button variant="ghost" onClick={() => setShowAddForm(false)}>
                 إلغاء
               </Button>
-              <Button variant="success" onClick={() => {
-                handleSave();
-                setShowAddForm(false);
+              <Button variant="success" onClick={async () => {
+                await handleSave();
               }}>
                 إضافة العميل
               </Button>
@@ -683,6 +693,57 @@ export default function CustomersPage() {
                   {isProcessingPayment ? 'جاري المعالجة...' : 'تأكيد الدفعة'}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {customerToDelete && (
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div
+            className="rounded-xl p-6 w-[400px] max-w-[90%] transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'var(--danger-bg)' }}
+              >
+                <Trash2 className="w-6 h-6" style={{ color: 'var(--danger)' }} />
+              </div>
+              <h3 className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
+                تأكيد الحذف
+              </h3>
+            </div>
+            <p className="text-[16px] mb-6 transition-theme" style={{ color: 'var(--text-secondary)' }}>
+              هل أنت متأكد من حذف هذا العميل؟
+              <br />
+              <strong>{customerToDelete.name}</strong>
+              <br />
+              <span className="text-[14px]" style={{ color: 'var(--danger)' }}>
+                لا يمكن التراجع عن هذا الإجراء!
+              </span>
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="ghost"
+                fullWidth
+                onClick={cancelDelete}
+                disabled={isDeleting}
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="danger"
+                fullWidth
+                onClick={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'جاري الحذف...' : 'حذف'}
+              </Button>
             </div>
           </div>
         </div>

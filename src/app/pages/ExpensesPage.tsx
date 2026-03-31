@@ -22,6 +22,7 @@ import {
   Plus,
   X,
   Trash2,
+  Pencil,
   DollarSign,
   TrendingDown,
   Filter,
@@ -45,6 +46,8 @@ export default function ExpensesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | 'all'>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [dateFilter, setDateFilter] = useState('all'); // all, today, week, month
   
   const [formData, setFormData] = useState<Partial<Expense>>({
@@ -232,6 +235,8 @@ export default function ExpensesPage() {
   
   const closeDialog = () => {
     setShowAddDialog(false);
+    setShowEditDialog(false);
+    setEditingExpense(null);
     setFormData({
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
@@ -240,6 +245,63 @@ export default function ExpensesPage() {
       description: '',
       notes: '',
     });
+  };
+
+  const handleEditClick = (expense: Expense) => {
+    setEditingExpense(expense);
+    setFormData({
+      date: expense.date,
+      time: expense.time,
+      category: expense.category,
+      amount: expense.amount,
+      description: expense.description,
+      notes: expense.notes || '',
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateExpense = async () => {
+    if (!editingExpense) return;
+    
+    if (!formData.amount || formData.amount <= 0) {
+      notify.error('الرجاء إدخال مبلغ صحيح');
+      return;
+    }
+    
+    if (!formData.description) {
+      notify.error('الوصف إلزامي');
+      return;
+    }
+
+    const categoryDbId = expenseCategoryLabels[formData.category as ExpenseCategory]?.dbId;
+    if (!categoryDbId) {
+      notify.error('التصنيف غير صالح');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      await api.expenses.update(editingExpense.id, {
+        category_id: categoryDbId,
+        category_name: expenseCategoryLabels[formData.category as ExpenseCategory]?.label,
+        amount: formData.amount,
+        description: formData.description,
+        date: formData.date,
+        notes: formData.notes,
+        method: 'نقدي',
+      });
+      
+      await loadExpenses();
+      
+      closeDialog();
+      notify.success('تم تعديل المصروفة بنجاح');
+    } catch (err: any) {
+      console.error('Expense update error:', err);
+      notify.error(err.message || 'فشل في تعديل المصروفة');
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   return (
@@ -439,7 +501,7 @@ export default function ExpensesPage() {
             <div className="col-span-2">التصنيف</div>
             <div className="col-span-2">التاريخ والوقت</div>
             <div className="col-span-1 text-center">المبلغ</div>
-            <div className="col-span-3">الملاحظات</div>
+            <div className="col-span-2">الملاحظات</div>
             <div className="col-span-2">المستخدم</div>
             <div className="col-span-1 text-center">الإجراء</div>
           </div>
@@ -498,7 +560,7 @@ export default function ExpensesPage() {
                       </p>
                     </div>
                     
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <p className="text-[13px] line-clamp-2 transition-theme" style={{ color: 'var(--text-muted)' }}>
                         {expense.notes || '-'}
                       </p>
@@ -511,25 +573,46 @@ export default function ExpensesPage() {
                     </div>
                     
                     <div className="col-span-1 text-center">
-                      <button
-                        onClick={() => handleDeleteExpense(expense.id)}
-                        title="حذف"
-                        className="w-8 h-8 rounded flex items-center justify-center transition-all"
-                        style={{ 
-                          backgroundColor: 'var(--danger-bg)', 
-                          color: 'var(--danger)' 
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--danger)';
-                          e.currentTarget.style.color = 'white';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
-                          e.currentTarget.style.color = 'var(--danger)';
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleEditClick(expense)}
+                          title="تعديل"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          style={{ 
+                            backgroundColor: 'var(--info-bg)', 
+                            color: 'var(--info)' 
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--info)';
+                            e.currentTarget.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--info-bg)';
+                            e.currentTarget.style.color = 'var(--info)';
+                          }}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteExpense(expense.id)}
+                          title="حذف"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          style={{ 
+                            backgroundColor: 'var(--danger-bg)', 
+                            color: 'var(--danger)' 
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--danger)';
+                            e.currentTarget.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                            e.currentTarget.style.color = 'var(--danger)';
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -663,6 +746,136 @@ export default function ExpensesPage() {
               </Button>
               <Button variant="danger" onClick={handleAddExpense} fullWidth>
                 إضافة المصروفة
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Expense Dialog */}
+      {showEditDialog && editingExpense && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div 
+            className="w-full max-w-[700px] rounded-lg overflow-hidden transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div 
+              className="p-4 flex items-center justify-between"
+              style={{ backgroundColor: 'var(--info)' }}
+            >
+              <h3 className="text-[21px] font-bold" style={{ color: 'white' }}>
+                تعديل المصروفة
+              </h3>
+              <button
+                onClick={closeDialog}
+                className="w-8 h-8 bg-white/20 rounded hover:bg-white/30 flex items-center justify-center"
+              >
+                <X className="w-5 h-5" style={{ color: 'white' }} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="التاريخ *"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, date: e.target.value })
+                  }
+                />
+                
+                <Input
+                  label="الوقت *"
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) =>
+                    setFormData({ ...formData, time: e.target.value })
+                  }
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                    التصنيف *
+                  </label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        category: e.target.value as ExpenseCategory,
+                      })
+                    }
+                    className="w-full h-[44px] rounded-lg px-3 outline-none transition-theme"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)'
+                    }}
+                  >
+                    {Object.entries(expenseCategoryLabels).map(([key, val]) => (
+                      <option key={key} value={key}>
+                        {val.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <Input
+                  label="المبلغ (جنيه) *"
+                  type="number"
+                  value={formData.amount}
+                  onChange={(e) =>
+                    setFormData({ ...formData, amount: Number(e.target.value) })
+                  }
+                  placeholder="0"
+                />
+              </div>
+              
+              <Input
+                label="الوصف/البيان *"
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+                placeholder="مثلاً: فاتورة الكهرباء، راتب موظف، إلخ"
+              />
+              
+              <div>
+                <label className="block text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  ملاحظات
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, notes: e.target.value })
+                  }
+                  placeholder="ملاحظات إضافية (اختياري)"
+                  className="w-full h-[80px] rounded-lg px-3 py-2 outline-none resize-none transition-theme"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-color)'
+                  }}
+                />
+              </div>
+              
+              <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>* الحقول الإلزامية</p>
+            </div>
+            
+            <div 
+              className="p-4 flex gap-3 transition-theme"
+              style={{ backgroundColor: 'var(--surface-1)' }}
+            >
+              <Button variant="ghost" onClick={closeDialog} fullWidth>
+                إلغاء
+              </Button>
+              <Button variant="info" onClick={handleUpdateExpense} fullWidth>
+                حفظ التعديلات
               </Button>
             </div>
           </div>
