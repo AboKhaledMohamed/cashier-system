@@ -206,5 +206,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: () => ipcRenderer.invoke('backup:create'),
     getLog: () => ipcRenderer.invoke('backup:getLog'),
     restore: (filePath) => ipcRenderer.invoke('backup:restore', filePath),
+    selectFolder: () => ipcRenderer.invoke('backup:selectFolder'),
   },
 });

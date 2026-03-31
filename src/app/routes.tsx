@@ -13,6 +13,7 @@ import ReturnsPage from "./pages/ReturnsPage";
 import ExpensesPage from "./pages/ExpensesPage";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
+import NotificationsPage from "./pages/NotificationsPage";
 
 // Use HashRouter for Electron compatibility (file:// protocol)
 export const router = createHashRouter([
@@ -40,6 +41,7 @@ export const router = createHashRouter([
       { path: "expenses", element: <ExpensesPage /> },
       { path: "users", element: <UsersPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "notifications", element: <NotificationsPage /> },
     ],
   },
 ]);

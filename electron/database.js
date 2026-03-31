@@ -23,6 +23,9 @@ function initDatabase(dbPath) {
   db.pragma('encoding = "UTF-8"');
   db.pragma('busy_timeout = 5000');
 
+  // Ensure shop_settings columns exist (backward compatibility)
+  ensureShopSettingsColumns();
+
   // Run schema and seed
   createSchema();
   runMigrations();
@@ -30,6 +33,46 @@ function initDatabase(dbPath) {
 
   console.log('Database initialized successfully at:', dbPath);
   return db;
+}
+
+/**
+ * Ensure shop_settings has all required columns (backward compatibility)
+ */
+function ensureShopSettingsColumns() {
+  try {
+    // Check if backup_schedule column exists
+    const hasBackupSchedule = db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('shop_settings') WHERE name = 'backup_schedule'"
+    ).get();
+    
+    if (!hasBackupSchedule || hasBackupSchedule.count === 0) {
+      console.log('Adding backup_schedule column to shop_settings...');
+      db.prepare("ALTER TABLE shop_settings ADD COLUMN backup_schedule TEXT DEFAULT 'daily'").run();
+    }
+    
+    // Check if backup_time column exists
+    const hasBackupTime = db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('shop_settings') WHERE name = 'backup_time'"
+    ).get();
+    
+    if (!hasBackupTime || hasBackupTime.count === 0) {
+      console.log('Adding backup_time column to shop_settings...');
+      db.prepare("ALTER TABLE shop_settings ADD COLUMN backup_time TEXT DEFAULT '02:00'").run();
+    }
+    
+    // Migrate existing data: set backup_schedule based on backup_auto
+    const settings = db.prepare('SELECT id, backup_auto FROM shop_settings WHERE id = 1').get();
+    if (settings) {
+      const current = db.prepare("SELECT backup_schedule FROM shop_settings WHERE id = 1").get();
+      if (!current?.backup_schedule) {
+        const schedule = settings.backup_auto ? 'daily' : 'manual';
+        db.prepare("UPDATE shop_settings SET backup_schedule = ? WHERE id = 1").run(schedule);
+        console.log('Migrated backup_schedule:', schedule);
+      }
+    }
+  } catch (error) {
+    console.error('Error ensuring shop_settings columns:', error);
+  }
 }
 
 /**
@@ -76,6 +119,8 @@ function createSchema() {
       pound_per_point         REAL    NOT NULL DEFAULT 0.1,
       min_redeem_points       INTEGER NOT NULL DEFAULT 100,
       backup_auto             INTEGER NOT NULL DEFAULT 1,
+      backup_schedule         TEXT    NOT NULL DEFAULT 'daily',
+      backup_time             TEXT    NOT NULL DEFAULT '02:00',
       backup_path             TEXT,
       backup_keep_days        INTEGER NOT NULL DEFAULT 30,
       dark_mode               INTEGER NOT NULL DEFAULT 1,
@@ -796,6 +841,20 @@ function runMigrations() {
         -- UPDATE invoices SET status = 'مرتجع_بالكامل' WHERE status = 'مرتجع';
       `,
       description: 'Prepare for new invoice return statuses (schema updated for new DBs)'
+    },
+    5: {
+      sql: `
+        -- Add backup schedule and time columns
+        ALTER TABLE shop_settings ADD COLUMN backup_schedule TEXT DEFAULT 'daily';
+        ALTER TABLE shop_settings ADD COLUMN backup_time TEXT DEFAULT '02:00';
+        
+        -- Migrate existing backup_auto to backup_schedule
+        UPDATE shop_settings SET backup_schedule = CASE 
+          WHEN backup_auto = 1 THEN 'daily' 
+          ELSE 'manual' 
+        END;
+      `,
+      description: 'Add backup schedule and time columns'
     }
   };
 

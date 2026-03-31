@@ -1590,8 +1590,11 @@ export default function POSPage() {
                 className="text-center mb-6 pb-4 border-b-2 border-dashed transition-theme"
                 style={{ borderColor: 'var(--border-color)' }}
               >
-                <h2 className="text-[24px] font-bold mb-1 transition-theme" style={{ color: 'var(--text-primary)' }}>الكاشير الذكي</h2>
-                <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>نظام إدارة نقاط البيع</p>
+                <h2 className="text-[24px] font-bold mb-1 transition-theme" style={{ color: 'var(--text-primary)' }}>{settings?.shop_name || 'الكاشير الذكي'}</h2>
+                <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>{settings?.address || ''}</p>
+                {settings?.phone && (
+                  <p className="text-[13px] transition-theme mt-1" style={{ color: 'var(--text-muted)' }}>ت: {settings.phone}</p>
+                )}
               </div>
 
               <div className="space-y-2 mb-4 text-[13px]">
@@ -1709,7 +1712,7 @@ export default function POSPage() {
                 style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
               >
                 <p>شكراً لتعاملكم معنا</p>
-                <p>الكاشير الذكي - Smart POS v1.0</p>
+                <p>{settings?.shop_name || 'الكاشير الذكي'} - Smart POS v1.0</p>
               </div>
             </div>
 

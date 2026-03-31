@@ -25,7 +25,7 @@ import {
 } from 'recharts';
 
 export default function ReportsPage() {
-  const { products } = useShop();
+  const { products, settings } = useShop();
   const api = (window as any).electronAPI;
   
   const today = new Date().toISOString().split('T')[0];
@@ -72,7 +72,46 @@ export default function ReportsPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<{id: string, number: string} | null>(null);
 
-  // Handle print invoice
+  // Export sales data to Excel (CSV format)
+  const exportToExcel = () => {
+    if (salesData.length === 0) {
+      alert('لا توجد بيانات للتصدير');
+      return;
+    }
+
+    // CSV Header
+    const headers = ['رقم الفاتورة', 'التاريخ', 'الوقت', 'العميل', 'المجموع', 'الخصم', 'الضريبة', 'الإجمالي', 'طريقة الدفع'];
+    
+    // CSV Rows
+    const rows = salesData.map(inv => [
+      inv.invoice_number,
+      inv.date,
+      inv.time,
+      inv.customer_name || 'عميل نقدي',
+      inv.subtotal || 0,
+      inv.discount_amount || 0,
+      inv.tax_amount || 0,
+      inv.total || inv.total_amount || 0,
+      inv.payment_method || 'نقدي'
+    ]);
+
+    // Combine header and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Create download link
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `تقرير_المبيعات_${dateFrom}_${dateTo}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   const handlePrintInvoice = (inv: any) => {
     setSelectedInvoice(inv);
     // Open print window after a short delay to ensure state is updated
@@ -122,9 +161,28 @@ export default function ReportsPage() {
   
   return (
     <div 
-      className="h-screen overflow-hidden transition-theme flex flex-col"
+      className="h-screen overflow-hidden transition-theme flex flex-col reports-page"
       style={{ backgroundColor: 'var(--page-bg)' }}
     >
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-only, .print-only * {
+            visibility: visible;
+          }
+          .print-only {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            display: block !important;
+          }
+        }
+      `}</style>
+      
       <Header title="التقارير" />
       
       <div className="p-7 space-y-6 flex-1 overflow-hidden">
@@ -227,7 +285,7 @@ export default function ReportsPage() {
         
         {/* Main Content - Based on Active Tab */}
         {activeTab === 'sales' && (
-          <div className="grid grid-cols-3 gap-6" style={{ height: 'calc(100vh - 220px)' }}>
+          <div className="grid grid-cols-3 gap-6" style={{ height: 'calc(100vh - 140px)' }}>
             {/* Left Side - Invoices Table */}
             <div className="col-span-2 flex flex-col gap-4 overflow-hidden">
               {/* Filtered Invoices Table */}
@@ -332,6 +390,7 @@ export default function ReportsPage() {
                     variant="info"
                     fullWidth
                     className="flex items-center justify-center gap-2"
+                    onClick={exportToExcel}
                   >
                     <Download className="w-5 h-5" />
                     تصدير Excel
@@ -499,6 +558,24 @@ export default function ReportsPage() {
                 </button>
               </div>
 
+              {/* Company Header */}
+              <div 
+                className="text-center mb-6 pb-4 border-b-2 border-dashed transition-theme"
+                style={{ borderColor: 'var(--border-color)' }}
+              >
+                <h2 className="text-[22px] font-bold mb-1 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                  {settings?.shop_name || 'الكاشير الذكي'}
+                </h2>
+                <p className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>
+                  {settings?.address || ''}
+                </p>
+                {settings?.phone && (
+                  <p className="text-[13px] transition-theme mt-1" style={{ color: 'var(--text-muted)' }}>
+                    ت: {settings.phone}
+                  </p>
+                )}
+              </div>
+
               {/* Invoice Info */}
               <div 
                 className="grid grid-cols-2 gap-4 mb-6 p-4 rounded-lg"
@@ -625,6 +702,107 @@ export default function ReportsPage() {
                   حذف
                 </Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Print Invoice Template - Hidden, only visible when printing */}
+        {selectedInvoice && (
+          <div 
+            className="hidden print-only"
+            style={{ 
+              position: 'absolute', 
+              left: '-9999px',
+              top: '0',
+              width: '100%',
+              padding: '20px',
+              fontFamily: 'Arial, sans-serif',
+              direction: 'rtl',
+              backgroundColor: 'white'
+            }}
+          >
+            {/* Company Header */}
+            <div style={{ textAlign: 'center', marginBottom: '20px', paddingBottom: '15px', borderBottom: '2px dashed #ccc' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0' }}>
+                {settings?.shop_name || 'الكاشير الذكي'}
+              </h2>
+              <p style={{ fontSize: '13px', color: '#666', margin: '3px 0' }}>
+                {settings?.address || ''}
+              </p>
+              {settings?.phone && (
+                <p style={{ fontSize: '13px', color: '#666', margin: '3px 0' }}>
+                  ت: {settings.phone}
+                </p>
+              )}
+            </div>
+
+            {/* Invoice Info */}
+            <div style={{ marginBottom: '20px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#666' }}>الفاتورة:</span>
+                <span style={{ fontWeight: 'bold' }}>{selectedInvoice.invoice_number}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#666' }}>التاريخ:</span>
+                <span>{selectedInvoice.date} {selectedInvoice.time}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#666' }}>العميل:</span>
+                <span>{selectedInvoice.customer_name || 'عميل نقدي'}</span>
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #333' }}>
+                  <th style={{ textAlign: 'right', padding: '8px 0' }}>المنتج</th>
+                  <th style={{ textAlign: 'center', padding: '8px 0' }}>الكمية</th>
+                  <th style={{ textAlign: 'left', padding: '8px 0' }}>الإجمالي</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(selectedInvoice.items || []).map((item: any, idx: number) => (
+                  <tr key={idx} style={{ borderBottom: '1px dashed #ccc' }}>
+                    <td style={{ padding: '8px 0' }}>
+                      <div>{item.product_name}</div>
+                      <div style={{ fontSize: '11px', color: '#666' }}>{formatCurrency(item.unit_price)} × {item.qty}</div>
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '8px 0' }}>{item.qty}</td>
+                    <td style={{ textAlign: 'left', padding: '8px 0', fontWeight: 'bold' }}>{formatCurrency(item.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Totals */}
+            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '2px solid #333', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <span style={{ color: '#666' }}>المجموع الفرعي:</span>
+                <span>{formatCurrency(selectedInvoice.subtotal || 0)}</span>
+              </div>
+              {selectedInvoice.discount_amount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', color: '#e74c3c' }}>
+                  <span>الخصم:</span>
+                  <span>-{formatCurrency(selectedInvoice.discount_amount)}</span>
+                </div>
+              )}
+              {selectedInvoice.tax_amount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', color: '#3498db' }}>
+                  <span>الضريبة:</span>
+                  <span>+{formatCurrency(selectedInvoice.tax_amount)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '2px solid #333', fontSize: '16px', fontWeight: 'bold' }}>
+                <span>الإجمالي:</span>
+                <span>{formatCurrency(selectedInvoice.total || selectedInvoice.total_amount || 0)}</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ textAlign: 'center', marginTop: '30px', paddingTop: '15px', borderTop: '1px dashed #ccc', fontSize: '11px', color: '#666' }}>
+              <p>شكراً لتعاملكم معنا</p>
+              <p>{settings?.shop_name || 'الكاشير الذكي'} - Smart POS v1.0</p>
             </div>
           </div>
         )}

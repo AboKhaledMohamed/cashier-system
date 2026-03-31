@@ -43,6 +43,17 @@ function registerNotificationHandlers() {
     db.prepare('DELETE FROM notifications WHERE id = ?').run(id);
     return { success: true };
   });
+
+  ipcMain.handle('folder:open', async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'اختيار مكان حفظ النسخ الاحتياطية',
+      buttonLabel: 'اختيار',
+    });
+    if (result.canceled) return null;
+    return result.filePaths[0];
+  });
 }
 
 function registerBackupHandlers() {
@@ -64,7 +75,7 @@ function registerBackupHandlers() {
     const startedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     try {
-      const dbPath = path.join(app.getPath('userData'), 'smartpos.db');
+      const dbPath = path.join(process.env.LOCALAPPDATA, 'smartpos', 'smartpos.db');
       fs.copyFileSync(dbPath, filePath);
       const stats = fs.statSync(filePath);
       const sizeKb = Math.round(stats.size / 1024);
@@ -87,6 +98,17 @@ function registerBackupHandlers() {
     // This is intentionally a no-op for safety
     // Real restore should replace the DB file and restart the app
     throw new Error('استعادة النسخة الاحتياطية تتطلب إعادة تشغيل التطبيق. يرجى استبدال ملف قاعدة البيانات يدوياً.');
+  });
+
+  ipcMain.handle('backup:selectFolder', async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'اختيار مكان حفظ النسخ الاحتياطية',
+      buttonLabel: 'اختيار',
+    });
+    if (result.canceled) return null;
+    return result.filePaths[0];
   });
 }
 

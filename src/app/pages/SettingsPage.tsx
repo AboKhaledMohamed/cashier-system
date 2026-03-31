@@ -37,13 +37,29 @@ export default function SettingsPage() {
   const [taxInclusive, setTaxInclusive] = useState(false);
   const [currency, setCurrency] = useState('EGP');
   const [backupSchedule, setBackupSchedule] = useState('daily');
+  const [backupTime, setBackupTime] = useState('02:00');
+  const [nextBackupTime, setNextBackupTime] = useState<string>('');
   const [backupLocation, setBackupLocation] = useState('C:\\SmartPOS\\Backups');
   const [hasChanges, setHasChanges] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [lastBackup, setLastBackup] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  const api = (window as any).electronAPI;
   
   useEffect(() => {
     loadSettings();
+    loadLastBackup();
   }, []);
+
+  const loadLastBackup = async () => {
+    try {
+      const log = await api.backup.getLog();
+      if (log && log.length > 0) {
+        setLastBackup(log[0]);
+      }
+    } catch (e) { /* ignore */ }
+  };
   
   useEffect(() => {
     if (settings) {
@@ -55,8 +71,13 @@ export default function SettingsPage() {
       setTaxName(settings.tax_name || 'ضريبة القيمة المضافة');
       setTaxInclusive(Boolean(settings.tax_inclusive));
       setCurrency(settings.currency || 'EGP');
-      setBackupSchedule(settings.backup_auto ? 'daily' : 'manual');
+      const schedule = settings.backup_schedule || (settings.backup_auto ? 'daily' : 'manual');
+      const time = settings.backup_time || '02:00';
+      setBackupSchedule(schedule);
+      setBackupTime(time);
       setBackupLocation(settings.backup_path || 'C:\\SmartPOS\\Backups');
+      // Calculate next backup time
+      calculateNextBackup(schedule, time);
     }
   }, [settings]);
   
@@ -77,7 +98,9 @@ export default function SettingsPage() {
         tax_name: taxName,
         tax_inclusive: taxInclusive ? 1 : 0,
         currency: currency,
-        backup_auto: backupSchedule === 'daily' ? 1 : 0,
+        backup_schedule: backupSchedule,
+        backup_time: backupTime,
+        backup_auto: backupSchedule !== 'manual' ? 1 : 0,
         backup_path: backupLocation,
       });
       setHasChanges(false);
@@ -89,6 +112,103 @@ export default function SettingsPage() {
     }
   };
   
+  const handleSelectBackupFolder = async () => {
+    try {
+      const folder = await api.backup.selectFolder();
+      if (folder) {
+        setBackupLocation(folder);
+        setHasChanges(true);
+        notify.success('تم اختيار المجلد');
+      }
+    } catch (err: any) {
+      notify.error(err.message || 'فشل في اختيار المجلد');
+    }
+  };
+
+  const handleScheduleChange = (value: string) => {
+    setBackupSchedule(value);
+    setHasChanges(true);
+    calculateNextBackup(value, backupTime);
+  };
+
+  const handleTimeChange = (value: string) => {
+    setBackupTime(value);
+    setHasChanges(true);
+    calculateNextBackup(backupSchedule, value);
+  };
+
+  const handleCreateBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      // First save settings to ensure backup path is set
+      if (hasChanges) {
+        await saveSettings();
+      }
+      const result = await api.backup.create();
+      setLastBackup({
+        file_name: result.fileName,
+        file_size_kb: result.sizeKb,
+        status: 'نجح',
+        started_at: new Date().toISOString()
+      });
+      notify.success(`تم إنشاء نسخة احتياطية: ${result.fileName}`);
+    } catch (err: any) {
+      notify.error(err.message || 'فشل في إنشاء النسخة الاحتياطية');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const calculateNextBackup = (schedule: string, time: string) => {
+    if (schedule === 'manual') {
+      setNextBackupTime('النسخ اليدوي فقط');
+      return;
+    }
+    
+    const now = new Date();
+    const [hours, minutes] = time.split(':').map(Number);
+    let nextDate = new Date(now);
+    nextDate.setHours(hours, minutes, 0, 0);
+    
+    const lastBackupDate = lastBackup?.started_at ? new Date(lastBackup.started_at) : null;
+    
+    switch (schedule) {
+      case 'daily':
+        if (nextDate <= now) {
+          nextDate.setDate(nextDate.getDate() + 1);
+        }
+        break;
+      case 'weekly':
+        const daysSinceLastWeek = lastBackupDate ? Math.floor((now.getTime() - lastBackupDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) : 7;
+        if (daysSinceLastWeek >= 7 || !lastBackupDate) {
+          if (nextDate <= now) {
+            nextDate.setDate(nextDate.getDate() + 1);
+          }
+        } else {
+          nextDate.setDate(nextDate.getDate() + (7 - daysSinceLastWeek));
+        }
+        break;
+      case 'monthly':
+        if (nextDate <= now) {
+          nextDate.setMonth(nextDate.getMonth() + 1);
+        }
+        break;
+    }
+    
+    const dateStr = nextDate.toLocaleDateString('ar-EG', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const timeStr = nextDate.toLocaleTimeString('ar-EG', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
+    setNextBackupTime(`${dateStr} الساعة ${timeStr}`);
+  };
+
   const cancelChanges = () => {
     if (settings) {
       setStoreName(settings.shop_name || 'الكاشير الذكي');
@@ -99,7 +219,8 @@ export default function SettingsPage() {
       setTaxName(settings.tax_name || 'ضريبة القيمة المضافة');
       setTaxInclusive(Boolean(settings.tax_inclusive));
       setCurrency(settings.currency || 'EGP');
-      setBackupSchedule(settings.backup_auto ? 'daily' : 'manual');
+      setBackupSchedule(settings.backup_schedule || (settings.backup_auto ? 'daily' : 'manual'));
+      setBackupTime(settings.backup_time || '02:00');
       setBackupLocation(settings.backup_path || 'C:\\SmartPOS\\Backups');
     }
     setHasChanges(false);
@@ -351,31 +472,6 @@ export default function SettingsPage() {
                         />
                       </div>
                     </div>
-
-                    <div className="w-[160px]">
-                      <label className="block text-[13px] mb-2 transition-theme" style={{ color: 'var(--text-muted)' }}>اللوجو</label>
-                      <div 
-                        className="w-[120px] h-[120px] rounded-xl flex items-center justify-center mb-3"
-                        style={{ background: 'linear-gradient(135deg, var(--primary), var(--info))' }}
-                      >
-                        <Store className="w-12 h-12" style={{ color: 'var(--text-on-primary)' }} />
-                      </div>
-                      <div className="flex gap-2">
-                        <button 
-                          className="flex-1 h-[36px] rounded-lg text-[12px] font-medium flex items-center justify-center gap-1 transition-colors"
-                          style={{ backgroundColor: 'var(--accent-blue)', color: 'var(--text-on-primary)' }}
-                        >
-                          <Upload className="w-4 h-4" />
-                          رفع صورة
-                        </button>
-                        <button 
-                          className="w-[36px] h-[36px] rounded-lg flex items-center justify-center transition-colors"
-                          style={{ backgroundColor: 'var(--surface-2)', color: 'var(--danger)' }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -432,9 +528,6 @@ export default function SettingsPage() {
                         }}
                       >
                         <option value="EGP">جنيه مصري</option>
-                        <option value="USD">دولار أمريكي</option>
-                        <option value="SAR">ريال سعودي</option>
-                        <option value="AED">درهم إماراتي</option>
                       </select>
                     </div>
                     
@@ -520,18 +613,26 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between mb-6">
                     <Button
                       variant="primary"
-                      onClick={() => notify.success('تم إنشاء نسخة احتياطية')}
+                      onClick={handleCreateBackup}
+                      disabled={isBackingUp}
                       className="h-[44px] px-6"
                       style={{ backgroundColor: 'var(--accent-blue)' }}
                     >
-                      نسخ الآن
+                      {isBackingUp ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          جاري النسخ...
+                        </>
+                      ) : (
+                        'نسخ الآن'
+                      )}
                     </Button>
                     
                     <div className="flex items-center gap-3">
                       <span className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>جدولة النسخ</span>
                       <select
                         value={backupSchedule}
-                        onChange={(e) => handleChange(setBackupSchedule)(e.target.value)}
+                        onChange={(e) => handleScheduleChange(e.target.value)}
                         className="h-[44px] rounded-lg px-4 text-[14px] outline-none appearance-none cursor-pointer min-w-[140px] transition-theme"
                         style={{
                           backgroundColor: 'var(--input-bg)',
@@ -549,6 +650,29 @@ export default function SettingsPage() {
                       </select>
                     </div>
                   </div>
+                  
+                  {/* Backup Time */}
+                  {backupSchedule !== 'manual' && (
+                    <div className="mb-4 p-4 rounded-lg transition-theme" style={{ backgroundColor: 'var(--surface-2)' }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-[13px] transition-theme" style={{ color: 'var(--text-muted)' }}>وقت النسخ الاحتياطي</label>
+                        <input
+                          type="time"
+                          value={backupTime}
+                          onChange={(e) => handleTimeChange(e.target.value)}
+                          className="h-[36px] rounded-lg px-3 text-[14px] outline-none transition-theme"
+                          style={{
+                            backgroundColor: 'var(--input-bg)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-color)'
+                          }}
+                        />
+                      </div>
+                      <p className="text-[12px] transition-theme" style={{ color: 'var(--success)' }}>
+                        <strong>النسخة القادمة:</strong> {nextBackupTime}
+                      </p>
+                    </div>
+                  )}
                   
                   {/* Backup Location */}
                   <div className="mb-6">
@@ -571,9 +695,7 @@ export default function SettingsPage() {
                       </div>
                       <Button
                         variant="ghost"
-                        onClick={() => {
-                          notify.info('اختيار المجلد (يتطلب تطبيق سطح مكتب)');
-                        }}
+                        onClick={handleSelectBackupFolder}
                         className="h-[44px] px-4 transition-theme"
                         style={{ 
                           border: '1px solid var(--border-color)',
@@ -594,7 +716,16 @@ export default function SettingsPage() {
                     style={{ backgroundColor: 'var(--surface-2)' }}
                   >
                     <p className="text-[14px] font-medium mb-2 transition-theme" style={{ color: 'var(--text-primary)' }}>آخر نسخة احتياطية</p>
-                    <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>لم يتم إنشاء نسخة احتياطية بعد</p>
+                    {lastBackup ? (
+                      <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                        <p><strong>الملف:</strong> {lastBackup.file_name}</p>
+                        <p><strong>الحجم:</strong> {(lastBackup.file_size_kb / 1024).toFixed(2)} MB</p>
+                        <p><strong>التاريخ:</strong> {lastBackup.started_at?.replace('T', ' ').slice(0, 19)}</p>
+                        <p><strong>الحالة:</strong> <span style={{ color: lastBackup.status === 'نجح' ? 'var(--success)' : 'var(--danger)' }}>{lastBackup.status}</span></p>
+                      </div>
+                    ) : (
+                      <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>لم يتم إنشاء نسخة احتياطية بعد</p>
+                    )}
                   </div>
                 </div>
 

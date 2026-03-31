@@ -84,29 +84,7 @@ function setupAutoBackup() {
   // Run backup check every hour
   setInterval(() => {
     try {
-      const settings = db.prepare('SELECT backup_auto, backup_path, backup_keep_days FROM shop_settings WHERE id = 1').get();
-      if (!settings || !settings.backup_auto) return;
-
-      const backupDir = settings.backup_path || path.join(app.getPath('userData'), 'backups');
-      const fs = require('fs');
-      if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir, { recursive: true });
-      }
-
-      // Check last backup
-      const lastBackup = db.prepare("SELECT MAX(started_at) as last FROM backup_log WHERE status = 'نجح'").get();
-      const lastBackupDate = lastBackup?.last ? new Date(lastBackup.last) : null;
-      const now = new Date();
-
-      // Backup daily
-      if (!lastBackupDate || (now - lastBackupDate) > 24 * 60 * 60 * 1000) {
-        performBackup(backupDir, db);
-      }
-
-      // Clean old backups
-      if (settings.backup_keep_days > 0) {
-        cleanOldBackups(backupDir, settings.backup_keep_days);
-      }
+      checkAndRunBackup(db);
     } catch (error) {
       console.error('Auto-backup check failed:', error);
     }
@@ -115,19 +93,69 @@ function setupAutoBackup() {
   // Also run once on startup (after 30 seconds)
   setTimeout(() => {
     try {
-      const settings = db.prepare('SELECT backup_auto, backup_path, backup_keep_days FROM shop_settings WHERE id = 1').get();
-      if (settings?.backup_auto) {
-        const backupDir = settings.backup_path || path.join(app.getPath('userData'), 'backups');
-        const fs = require('fs');
-        if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
-        performBackup(backupDir, db);
-      }
+      checkAndRunBackup(db);
     } catch (e) { console.error('Startup backup failed:', e); }
   }, 30000);
 }
 
+function checkAndRunBackup(db) {
+  const settings = db.prepare('SELECT backup_schedule, backup_time, backup_path, backup_keep_days FROM shop_settings WHERE id = 1').get();
+  if (!settings || settings.backup_schedule === 'manual') return;
+
+  const backupDir = settings.backup_path || path.join(app.getPath('userData'), 'backups');
+  const fs = require('fs');
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+
+  // Check if it's time to run backup (based on backup_time setting)
+  const now = new Date();
+  const [targetHour, targetMinute] = (settings.backup_time || '02:00').split(':').map(Number);
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  
+  // Only run if within the target hour (to avoid multiple runs in same period)
+  const isTargetTime = currentHour === targetHour && currentMinute < 60;
+  if (!isTargetTime) return;
+
+  // Check last backup
+  const lastBackup = db.prepare("SELECT MAX(started_at) as last FROM backup_log WHERE status = 'نجح' AND backup_type = 'تلقائي'").get();
+  const lastBackupDate = lastBackup?.last ? new Date(lastBackup.last) : null;
+
+  let shouldBackup = false;
+  
+  if (!lastBackupDate) {
+    shouldBackup = true;
+  } else {
+    const daysSinceLastBackup = (now - lastBackupDate) / (24 * 60 * 60 * 1000);
+    
+    switch (settings.backup_schedule) {
+      case 'daily':
+        shouldBackup = daysSinceLastBackup >= 1;
+        break;
+      case 'weekly':
+        shouldBackup = daysSinceLastBackup >= 7;
+        break;
+      case 'monthly':
+        shouldBackup = daysSinceLastBackup >= 30;
+        break;
+    }
+  }
+
+  if (shouldBackup) {
+    console.log(`Running ${settings.backup_schedule} backup at ${settings.backup_time}`);
+    performBackup(backupDir, db);
+  }
+
+  // Clean old backups
+  if (settings.backup_keep_days > 0) {
+    cleanOldBackups(backupDir, settings.backup_keep_days);
+  }
+}
+
 function performBackup(backupDir, db) {
   const fs = require('fs');
+  const path = require('path');
   const backupId = `backup-${Date.now()}`;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const fileName = `smartpos-backup-${timestamp}.db`;
@@ -135,32 +163,17 @@ function performBackup(backupDir, db) {
   const startedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   try {
-    // Use SQLite backup API
-    db.backup(filePath).then(() => {
-      const stats = fs.statSync(filePath);
-      const sizeKb = Math.round(stats.size / 1024);
-      db.prepare(`INSERT INTO backup_log (id, backup_type, file_path, file_name, file_size_kb, status, started_at, completed_at)
-        VALUES (?, 'تلقائي', ?, ?, ?, 'نجح', ?, datetime('now'))`).run(backupId, filePath, fileName, sizeKb, startedAt);
-      console.log('Auto-backup completed:', filePath);
-    }).catch(err => {
-      db.prepare(`INSERT INTO backup_log (id, backup_type, file_path, file_name, file_size_kb, status, error_message, started_at)
-        VALUES (?, 'تلقائي', ?, ?, 0, 'فشل', ?, ?)`).run(backupId, filePath, fileName, err.message, startedAt);
-      console.error('Backup failed:', err);
-    });
+    const dbPath = path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'smartpos', 'smartpos.db');
+    fs.copyFileSync(dbPath, filePath);
+    const stats = fs.statSync(filePath);
+    const sizeKb = Math.round(stats.size / 1024);
+    db.prepare(`INSERT INTO backup_log (id, backup_type, file_path, file_name, file_size_kb, status, started_at, completed_at)
+      VALUES (?, 'تلقائي', ?, ?, ?, 'نجح', ?, datetime('now'))`).run(backupId, filePath, fileName, sizeKb, startedAt);
+    console.log('Auto-backup completed:', filePath);
   } catch (error) {
-    // Fallback: copy file directly
-    try {
-      const dbPath = path.join(app.getPath('userData'), 'smartpos.db');
-      fs.copyFileSync(dbPath, filePath);
-      const stats = fs.statSync(filePath);
-      const sizeKb = Math.round(stats.size / 1024);
-      db.prepare(`INSERT INTO backup_log (id, backup_type, file_path, file_name, file_size_kb, status, started_at, completed_at)
-        VALUES (?, 'تلقائي', ?, ?, ?, 'نجح', ?, datetime('now'))`).run(backupId, filePath, fileName, sizeKb, startedAt);
-      console.log('Auto-backup (copy) completed:', filePath);
-    } catch (copyErr) {
-      db.prepare(`INSERT INTO backup_log (id, backup_type, file_path, file_name, file_size_kb, status, error_message, started_at)
-        VALUES (?, 'تلقائي', ?, ?, 0, 'فشل', ?, ?)`).run(backupId, filePath, fileName, copyErr.message, startedAt);
-    }
+    db.prepare(`INSERT INTO backup_log (id, backup_type, file_path, file_name, file_size_kb, status, error_message, started_at)
+      VALUES (?, 'تلقائي', ?, ?, 0, 'فشل', ?, ?)`).run(backupId, filePath, fileName, error.message, startedAt);
+    console.error('Backup failed:', error);
   }
 }
 

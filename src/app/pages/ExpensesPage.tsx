@@ -48,6 +48,8 @@ export default function ExpensesPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [dateFilter, setDateFilter] = useState('all'); // all, today, week, month
   
   const [formData, setFormData] = useState<Partial<Expense>>({
@@ -233,6 +235,44 @@ export default function ExpensesPage() {
     }
   };
   
+  const handleDeleteClick = (expense: Expense) => {
+    setExpenseToDelete(expense);
+  };
+
+  const confirmDelete = async () => {
+    if (!expenseToDelete) return;
+    
+    setIsDeleting(true);
+    
+    // Optimistic update - remove from UI immediately without blocking
+    const deletedExpense = expenses.find(e => e.id === expenseToDelete.id);
+    if (!deletedExpense) {
+      setIsDeleting(false);
+      setExpenseToDelete(null);
+      return;
+    }
+    
+    setExpenses(prev => prev.filter(e => e.id !== expenseToDelete.id));
+    
+    try {
+      await api.expenses.delete(expenseToDelete.id);
+      notify.success('تم حذف المصروفة');
+    } catch (err: any) {
+      // Restore on error
+      setExpenses(prev => [...prev, deletedExpense].sort((a, b) => 
+        new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime()
+      ));
+      notify.error(err.message || 'فشل في حذف المصروفة');
+    } finally {
+      setIsDeleting(false);
+      setExpenseToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setExpenseToDelete(null);
+  };
+
   const closeDialog = () => {
     setShowAddDialog(false);
     setShowEditDialog(false);
@@ -594,7 +634,7 @@ export default function ExpensesPage() {
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteExpense(expense.id)}
+                          onClick={() => handleDeleteClick(expense)}
                           title="حذف"
                           className="w-8 h-8 rounded flex items-center justify-center transition-all"
                           style={{ 
@@ -876,6 +916,61 @@ export default function ExpensesPage() {
               </Button>
               <Button variant="info" onClick={handleUpdateExpense} fullWidth>
                 حفظ التعديلات
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {expenseToDelete && (
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ backgroundColor: 'var(--overlay-bg)' }}
+        >
+          <div
+            className="rounded-xl p-6 w-[400px] max-w-[90%] transition-theme"
+            style={{ backgroundColor: 'var(--card-bg)' }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'var(--danger-bg)' }}
+              >
+                <Trash2 className="w-6 h-6" style={{ color: 'var(--danger)' }} />
+              </div>
+              <h3 className="text-[20px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>
+                تأكيد الحذف
+              </h3>
+            </div>
+            <p className="text-[16px] mb-6 transition-theme" style={{ color: 'var(--text-secondary)' }}>
+              هل أنت متأكد من حذف هذه المصروفة؟
+              <br />
+              <strong>{expenseToDelete.description}</strong>
+              <br />
+              <span style={{ color: 'var(--warning)' }}>
+                المبلغ: {expenseToDelete.amount.toLocaleString('ar-EG')} ج
+              </span>
+              <br />
+              <span className="text-[14px]" style={{ color: 'var(--danger)' }}>
+                لا يمكن التراجع عن هذا الإجراء!
+              </span>
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="ghost"
+                fullWidth
+                onClick={cancelDelete}
+                disabled={isDeleting}
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="danger"
+                fullWidth
+                onClick={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'جاري الحذف...' : 'حذف'}
               </Button>
             </div>
           </div>

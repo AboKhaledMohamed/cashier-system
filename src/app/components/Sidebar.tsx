@@ -14,6 +14,7 @@ import {
   Settings,
   Menu,
   X,
+  Bell,
 } from 'lucide-react';
 
 const menuItems = [
@@ -25,7 +26,7 @@ const menuItems = [
   { path: '/reports', icon: FileText, label: 'التقارير' },
   { path: '/purchases', icon: ShoppingBag, label: 'المشتريات' },
   { path: '/returns', icon: RotateCcw, label: 'المردودات' },
-
+  { path: '/notifications', icon: Bell, label: 'الإشعارات' },
   { path: '/expenses', icon: Receipt, label: 'المصاريف' },
   { path: '/users', icon: UserCog, label: 'المستخدمين' },
   { path: '/settings', icon: Settings, label: 'الإعدادات' },

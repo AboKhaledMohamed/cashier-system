@@ -60,6 +60,8 @@ export interface ShopSettings {
   low_stock_alert: number;
   expiry_alert_days: number;
   backup_auto: number;
+  backup_schedule?: string;
+  backup_time?: string;
   backup_path?: string;
   backup_keep_days: number;
   dark_mode: number;

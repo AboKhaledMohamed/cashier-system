@@ -19,7 +19,7 @@ function registerSettingsHandlers() {
       'low_stock_alert', 'expiry_alert_days',
       'tax_enabled', 'tax_name', 'tax_rate', 'tax_inclusive',
       'loyalty_enabled', 'points_per_pound', 'pound_per_point', 'min_redeem_points',
-      'backup_auto', 'backup_path', 'backup_keep_days'
+      'backup_auto', 'backup_schedule', 'backup_time', 'backup_path', 'backup_keep_days'
     ];
 
     for (const key of allowed) {

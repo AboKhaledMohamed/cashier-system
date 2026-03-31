@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LogOut, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { useShop } from '../context/ShopContext';
 import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
@@ -9,6 +10,7 @@ interface HeaderProps {
 
 export default function Header({ title }: HeaderProps) {
   const navigate = useNavigate();
+  const { currentUser } = useShop();
   const [currentTime, setCurrentTime] = useState(new Date());
   
   useEffect(() => {
@@ -23,7 +25,6 @@ export default function Header({ title }: HeaderProps) {
     return date.toLocaleTimeString('ar-EG', {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
       hour12: true,
     });
   };
@@ -88,20 +89,24 @@ export default function Header({ title }: HeaderProps) {
               className="text-[14px] font-bold transition-theme"
               style={{ color: 'var(--text-primary)' }}
             >
-              أحمد محمد
+              {currentUser?.full_name || 'مستخدم'}
             </p>
             <p 
               className="text-[12px] transition-theme"
               style={{ color: 'var(--text-muted)' }}
             >
-              مدير النظام
+              {currentUser?.role === 'admin' ? 'مدير النظام' : 
+               currentUser?.role === 'manager' ? 'مدير' : 
+               currentUser?.role === 'cashier' ? 'كاشير' : 'مستخدم'}
             </p>
           </div>
           <div 
             className="w-10 h-10 rounded-full flex items-center justify-center transition-theme"
             style={{ backgroundColor: 'var(--primary)' }}
           >
-            <span className="font-bold" style={{ color: 'var(--text-on-primary)' }}>أ</span>
+            <span className="font-bold" style={{ color: 'var(--text-on-primary)' }}>
+              {(currentUser?.full_name?.[0] || 'م')}
+            </span>
           </div>
         </div>
         
