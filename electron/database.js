@@ -141,12 +141,34 @@ function createSchema() {
                                       CHECK (role IN ('admin','manager','cashier')),
       phone                   TEXT,
       avatar_url              TEXT,
+      -- Existing permissions
       can_view_costs          INTEGER NOT NULL DEFAULT 0,
       can_apply_discount      INTEGER NOT NULL DEFAULT 1,
       max_discount_pct        REAL    NOT NULL DEFAULT 0,
       can_void_invoice        INTEGER NOT NULL DEFAULT 0,
       can_manage_products     INTEGER NOT NULL DEFAULT 0,
       can_view_reports        INTEGER NOT NULL DEFAULT 0,
+      -- New comprehensive permissions
+      can_add_products        INTEGER NOT NULL DEFAULT 0,
+      can_edit_products       INTEGER NOT NULL DEFAULT 0,
+      can_delete_products     INTEGER NOT NULL DEFAULT 0,
+      can_manage_inventory    INTEGER NOT NULL DEFAULT 0,
+      can_manage_customers    INTEGER NOT NULL DEFAULT 0,
+      can_manage_suppliers    INTEGER NOT NULL DEFAULT 0,
+      can_manage_users        INTEGER NOT NULL DEFAULT 0,
+      can_manage_settings     INTEGER NOT NULL DEFAULT 0,
+      can_view_audit_log      INTEGER NOT NULL DEFAULT 0,
+      can_delete_invoices     INTEGER NOT NULL DEFAULT 0,
+      can_give_rewards        INTEGER NOT NULL DEFAULT 0,
+      can_record_expenses     INTEGER NOT NULL DEFAULT 0,
+      can_process_returns     INTEGER NOT NULL DEFAULT 0,
+      -- Granular customer/supplier permissions
+      can_add_customers       INTEGER NOT NULL DEFAULT 0,
+      can_edit_customers      INTEGER NOT NULL DEFAULT 0,
+      can_delete_customers    INTEGER NOT NULL DEFAULT 0,
+      can_add_suppliers       INTEGER NOT NULL DEFAULT 0,
+      can_edit_suppliers      INTEGER NOT NULL DEFAULT 0,
+      can_delete_suppliers    INTEGER NOT NULL DEFAULT 0,
       pin_code                TEXT,
       is_active               INTEGER NOT NULL DEFAULT 1,
       must_change_password    INTEGER NOT NULL DEFAULT 0,
@@ -774,9 +796,16 @@ function seedData() {
   // Admin user only - no other seed data
   db.prepare(`INSERT INTO users (id, username, password_hash, full_name, role,
     can_view_costs, can_apply_discount, max_discount_pct,
-    can_void_invoice, can_manage_products, can_view_reports, is_active, must_change_password)
+    can_void_invoice, can_manage_products, can_view_reports, is_active, must_change_password,
+    can_add_products, can_edit_products, can_delete_products, can_manage_inventory,
+    can_manage_customers, can_manage_suppliers, can_manage_users, can_manage_settings,
+    can_view_audit_log, can_delete_invoices, can_give_rewards, can_record_expenses, can_process_returns,
+    can_add_customers, can_edit_customers, can_delete_customers,
+    can_add_suppliers, can_edit_suppliers, can_delete_suppliers)
     VALUES ('user-admin-001', 'admin', ?, 'المدير العام', 'admin',
-    1, 1, 100, 1, 1, 1, 1, 1)`).run(adminPasswordHash);
+    1, 1, 100, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1)`).run(adminPasswordHash);
 
   // Add default category
   db.prepare(`INSERT INTO categories (id, name, color, pos_order, is_active) 
@@ -855,6 +884,116 @@ function runMigrations() {
         END;
       `,
       description: 'Add backup schedule and time columns'
+    },
+    6: {
+      sql: `
+        -- Add new permission columns to users table for comprehensive RBAC
+        -- Using IF NOT EXISTS to avoid errors if columns already exist
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_add_products INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_edit_products INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_delete_products INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_inventory INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_suppliers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_users INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_settings INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_audit_log INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_delete_invoices INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_give_rewards INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_record_expenses INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_process_returns INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_add_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_edit_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_delete_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_add_suppliers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_edit_suppliers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS can_delete_suppliers INTEGER NOT NULL DEFAULT 0;
+        
+        -- Update role-based default permissions
+        -- Admin: all permissions
+        UPDATE users SET 
+          can_add_products = 1, can_edit_products = 1, can_delete_products = 1,
+          can_manage_inventory = 1, can_manage_customers = 1, can_manage_suppliers = 1,
+          can_manage_users = 1, can_manage_settings = 1, can_view_audit_log = 1,
+          can_delete_invoices = 1, can_give_rewards = 1, can_record_expenses = 1,
+          can_process_returns = 1, can_void_invoice = 1, can_manage_products = 1,
+          can_view_reports = 1, can_view_costs = 1, can_apply_discount = 1, max_discount_pct = 100,
+          can_add_customers = 1, can_edit_customers = 1, can_delete_customers = 1,
+          can_add_suppliers = 1, can_edit_suppliers = 1, can_delete_suppliers = 1
+        WHERE role = 'admin';
+        
+        -- Manager: most permissions except users, settings, delete invoices, audit log
+        UPDATE users SET 
+          can_add_products = 1, can_edit_products = 1, can_delete_products = 1,
+          can_manage_inventory = 1, can_manage_customers = 1, can_manage_suppliers = 1,
+          can_give_rewards = 1, can_record_expenses = 1, can_process_returns = 1,
+          can_void_invoice = 1, can_manage_products = 1, can_view_reports = 1,
+          can_view_costs = 1, can_apply_discount = 1, max_discount_pct = 100,
+          can_manage_users = 0, can_manage_settings = 0, can_delete_invoices = 0, can_view_audit_log = 0,
+          can_add_customers = 1, can_edit_customers = 1, can_delete_customers = 1,
+          can_add_suppliers = 1, can_edit_suppliers = 1, can_delete_suppliers = 1
+        WHERE role = 'manager';
+        
+        -- Cashier: limited permissions but can add customers/suppliers and view reports
+        UPDATE users SET 
+          can_add_products = 0, can_edit_products = 0, can_delete_products = 0,
+          can_manage_inventory = 0,
+          can_manage_users = 0, can_manage_settings = 0, can_view_audit_log = 0,
+          can_delete_invoices = 0, can_give_rewards = 0,
+          can_record_expenses = 1, can_process_returns = 1,
+          can_void_invoice = 0, can_manage_products = 0, can_view_reports = 1,
+          can_view_costs = 0, can_apply_discount = 1, max_discount_pct = 10,
+          can_manage_customers = 0, can_manage_suppliers = 0,
+          can_add_customers = 1, can_edit_customers = 0, can_delete_customers = 0,
+          can_add_suppliers = 1, can_edit_suppliers = 0, can_delete_suppliers = 0
+        WHERE role = 'cashier';
+      `,
+      description: 'Add comprehensive RBAC permission system with granular customer/supplier permissions'
+    },
+    7: {
+      sql: `
+        -- Migration 7: Add missing columns if they don't exist, then update permissions
+        -- Check and add can_add_customers
+        ALTER TABLE users ADD COLUMN can_add_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN can_edit_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN can_delete_customers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN can_add_suppliers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN can_edit_suppliers INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE users ADD COLUMN can_delete_suppliers INTEGER NOT NULL DEFAULT 0;
+        
+        -- Now update all users with correct permissions
+        -- Cashier: can view reports, add customers/suppliers only
+        UPDATE users SET 
+          can_view_reports = 1,
+          can_add_customers = 1,
+          can_edit_customers = 0,
+          can_delete_customers = 0,
+          can_add_suppliers = 1,
+          can_edit_suppliers = 0,
+          can_delete_suppliers = 0
+        WHERE role = 'cashier';
+        
+        -- Manager: full customer/supplier permissions
+        UPDATE users SET 
+          can_add_customers = 1,
+          can_edit_customers = 1,
+          can_delete_customers = 1,
+          can_add_suppliers = 1,
+          can_edit_suppliers = 1,
+          can_delete_suppliers = 1
+        WHERE role = 'manager';
+        
+        -- Admin: full permissions
+        UPDATE users SET 
+          can_add_customers = 1,
+          can_edit_customers = 1,
+          can_delete_customers = 1,
+          can_add_suppliers = 1,
+          can_edit_suppliers = 1,
+          can_delete_suppliers = 1
+        WHERE role = 'admin';
+      `,
+      description: 'Add missing permission columns and update cashier permissions'
     }
   };
 
@@ -862,10 +1001,20 @@ function runMigrations() {
     const v = parseInt(version);
     if (v > currentVersion) {
       console.log(`Running migration ${v}: ${migration.description}`);
-      db.transaction(() => {
-        db.exec(migration.sql);
-        db.prepare('INSERT INTO schema_version (version, description) VALUES (?, ?)').run(v, migration.description);
-      })();
+      try {
+        db.transaction(() => {
+          db.exec(migration.sql);
+          db.prepare('INSERT INTO schema_version (version, description) VALUES (?, ?)').run(v, migration.description);
+        })();
+      } catch (err) {
+        // If error is about column already existing, mark migration as done and continue
+        if (err.message && err.message.includes('duplicate column name')) {
+          console.log(`Migration ${v}: Columns already exist, marking as applied`);
+          db.prepare('INSERT INTO schema_version (version, description) VALUES (?, ?)').run(v, migration.description);
+        } else {
+          throw err;
+        }
+      }
     }
   }
 }

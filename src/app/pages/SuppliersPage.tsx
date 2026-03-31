@@ -16,6 +16,7 @@ import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useShop } from '../context/ShopContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatters';
 import { notify } from '../utils/toast';
 import {
@@ -40,6 +41,7 @@ const trustLevelLabels: Record<string, { label: string; color: string }> = {
 
 export default function SuppliersPage() {
   const { suppliers, loadSuppliers } = useShop();
+  const { canAddSuppliers, canEditSuppliers, canDeleteSuppliers } = usePermissions();
   const api = (window as any).electronAPI;
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -75,8 +77,14 @@ export default function SuppliersPage() {
 
   const handleSave = async () => {
     const errors: { name?: string; phone?: string } = {};
-    if (!formData.name?.trim()) errors.name = 'اسم المورد مطلوب';
-    if (!formData.phone?.trim()) errors.phone = 'رقم التليفون مطلوب';
+    if (!formData.name?.trim()) {
+      errors.name = 'اسم المورد مطلوب';
+    }
+    if (!formData.phone?.trim()) {
+      errors.phone = 'رقم التليفون مطلوب';
+    } else if (!/^01[0125]\d{8}$/.test(formData.phone.trim())) {
+      errors.phone = 'رقم الموبايل غير صحيح';
+    }
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -243,6 +251,7 @@ export default function SuppliersPage() {
             onClick={() => setShowAddForm(!showAddForm)}
             className="flex items-center gap-2 min-w-[48px] justify-center"
             title={showAddForm ? 'إلغاء' : 'إضافة مورد'}
+            disabled={!canAddSuppliers}
           >
             {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
             {!showAddForm && 'إضافة مورد'}
@@ -431,39 +440,49 @@ export default function SuppliersPage() {
                           <Wallet className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => openEditDialog(supplier)}
+                          onClick={() => canEditSuppliers && openEditDialog(supplier)}
+                          disabled={!canEditSuppliers}
                           title="تعديل البيانات"
-                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
-                            backgroundColor: 'var(--info-bg)', 
-                            color: 'var(--info)' 
+                            backgroundColor: canEditSuppliers ? 'var(--info-bg)' : 'var(--surface-2)', 
+                            color: canEditSuppliers ? 'var(--info)' : 'var(--text-muted)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--info)';
-                            e.currentTarget.style.color = 'white';
+                            if (canEditSuppliers) {
+                              e.currentTarget.style.backgroundColor = 'var(--info)';
+                              e.currentTarget.style.color = 'white';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--info-bg)';
-                            e.currentTarget.style.color = 'var(--info)';
+                            if (canEditSuppliers) {
+                              e.currentTarget.style.backgroundColor = 'var(--info-bg)';
+                              e.currentTarget.style.color = 'var(--info)';
+                            }
                           }}
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => setSupplierToDelete(supplier)}
+                          onClick={() => canDeleteSuppliers && setSupplierToDelete(supplier)}
+                          disabled={!canDeleteSuppliers}
                           title="حذف المورد"
-                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
-                            backgroundColor: 'var(--danger-bg)', 
-                            color: 'var(--danger)' 
+                            backgroundColor: canDeleteSuppliers ? 'var(--danger-bg)' : 'var(--surface-2)', 
+                            color: canDeleteSuppliers ? 'var(--danger)' : 'var(--text-muted)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--danger)';
-                            e.currentTarget.style.color = 'white';
+                            if (canDeleteSuppliers) {
+                              e.currentTarget.style.backgroundColor = 'var(--danger)';
+                              e.currentTarget.style.color = 'white';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
-                            e.currentTarget.style.color = 'var(--danger)';
+                            if (canDeleteSuppliers) {
+                              e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                              e.currentTarget.style.color = 'var(--danger)';
+                            }
                           }}
                         >
                           <Trash2 className="w-4 h-4" />

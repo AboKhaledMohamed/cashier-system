@@ -13,6 +13,7 @@
 
 import { useState, useEffect } from 'react';
 import { useShop } from '../context/ShopContext';
+import { usePermissions } from '../hooks/usePermissions';
 import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -42,6 +43,7 @@ const expenseCategoryLabels: Record<ExpenseCategory, { label: string; color: str
 export default function ExpensesPage() {
   const api = (window as any).electronAPI;
   const { currentUser } = useShop();
+  const { canRecordExpenses, isAdmin, isManager } = usePermissions();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | 'all'>('all');
@@ -615,39 +617,49 @@ export default function ExpensesPage() {
                     <div className="col-span-1 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => handleEditClick(expense)}
+                          onClick={() => (isAdmin() || isManager()) && handleEditClick(expense)}
+                          disabled={!(isAdmin() || isManager())}
                           title="تعديل"
-                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
-                            backgroundColor: 'var(--info-bg)', 
-                            color: 'var(--info)' 
+                            backgroundColor: (isAdmin() || isManager()) ? 'var(--info-bg)' : 'var(--surface-2)', 
+                            color: (isAdmin() || isManager()) ? 'var(--info)' : 'var(--text-muted)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--info)';
-                            e.currentTarget.style.color = 'white';
+                            if (isAdmin() || isManager()) {
+                              e.currentTarget.style.backgroundColor = 'var(--info)';
+                              e.currentTarget.style.color = 'white';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--info-bg)';
-                            e.currentTarget.style.color = 'var(--info)';
+                            if (isAdmin() || isManager()) {
+                              e.currentTarget.style.backgroundColor = 'var(--info-bg)';
+                              e.currentTarget.style.color = 'var(--info)';
+                            }
                           }}
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteClick(expense)}
+                          onClick={() => (isAdmin() || isManager()) && handleDeleteClick(expense)}
+                          disabled={!(isAdmin() || isManager())}
                           title="حذف"
-                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
-                            backgroundColor: 'var(--danger-bg)', 
-                            color: 'var(--danger)' 
+                            backgroundColor: (isAdmin() || isManager()) ? 'var(--danger-bg)' : 'var(--surface-2)', 
+                            color: (isAdmin() || isManager()) ? 'var(--danger)' : 'var(--text-muted)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--danger)';
-                            e.currentTarget.style.color = 'white';
+                            if (isAdmin() || isManager()) {
+                              e.currentTarget.style.backgroundColor = 'var(--danger)';
+                              e.currentTarget.style.color = 'white';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
-                            e.currentTarget.style.color = 'var(--danger)';
+                            if (isAdmin() || isManager()) {
+                              e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                              e.currentTarget.style.color = 'var(--danger)';
+                            }
                           }}
                         >
                           <Trash2 className="w-4 h-4" />

@@ -10,11 +10,13 @@ import { formatCurrency, formatNumber, formatDate } from '../utils/formatters';
 import { notify, messages } from '../utils/toast';
 import { useLocation } from 'react-router';
 import { Search, Plus, Edit, AlertCircle, Package, X, Trash2 } from 'lucide-react';
+import { usePermissions } from '../hooks/usePermissions';
 import type { Product } from '../types/small-shop.types';
 
 export default function InventoryPage() {
   const location = useLocation();
   const { products: shopProducts, loadProducts, categories, loadCategories } = useShop();
+  const { canAddProducts, canEditProducts, canDeleteProducts } = usePermissions();
   const api = (window as any).electronAPI;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
@@ -300,6 +302,7 @@ export default function InventoryPage() {
             variant="info"
             onClick={() => setShowAddForm(!showAddForm)}
             className="flex items-center gap-2"
+            disabled={!canAddProducts}
           >
             <Plus className="w-5 h-5" />
             {showAddForm ? 'إلغاء' : 'إضافة منتج'}
@@ -556,37 +559,47 @@ export default function InventoryPage() {
                     </div>
                     <div className="col-span-1 text-center flex gap-1 justify-center">
                       <button
-                        onClick={() => openEditDialog(product)}
-                        className="w-8 h-8 rounded transition-all"
+                        onClick={() => canEditProducts && openEditDialog(product)}
+                        disabled={!canEditProducts}
+                        className="w-8 h-8 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ 
-                          backgroundColor: 'var(--info-bg)', 
-                          color: 'var(--info)' 
+                          backgroundColor: canEditProducts ? 'var(--info-bg)' : 'var(--surface-2)', 
+                          color: canEditProducts ? 'var(--info)' : 'var(--text-muted)' 
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--info)';
-                          e.currentTarget.style.color = 'white';
+                          if (canEditProducts) {
+                            e.currentTarget.style.backgroundColor = 'var(--info)';
+                            e.currentTarget.style.color = 'white';
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--info-bg)';
-                          e.currentTarget.style.color = 'var(--info)';
+                          if (canEditProducts) {
+                            e.currentTarget.style.backgroundColor = 'var(--info-bg)';
+                            e.currentTarget.style.color = 'var(--info)';
+                          }
                         }}
                       >
                         <Edit className="w-4 h-4 mx-auto" />
                       </button>
                       <button
-                        onClick={() => handleDeleteClick(product)}
-                        className="w-8 h-8 rounded transition-all"
+                        onClick={() => canDeleteProducts && handleDeleteClick(product)}
+                        disabled={!canDeleteProducts}
+                        className="w-8 h-8 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ 
-                          backgroundColor: 'var(--danger-bg)', 
-                          color: 'var(--danger)' 
+                          backgroundColor: canDeleteProducts ? 'var(--danger-bg)' : 'var(--surface-2)', 
+                          color: canDeleteProducts ? 'var(--danger)' : 'var(--text-muted)' 
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--danger)';
-                          e.currentTarget.style.color = 'white';
+                          if (canDeleteProducts) {
+                            e.currentTarget.style.backgroundColor = 'var(--danger)';
+                            e.currentTarget.style.color = 'white';
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
-                          e.currentTarget.style.color = 'var(--danger)';
+                          if (canDeleteProducts) {
+                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                            e.currentTarget.style.color = 'var(--danger)';
+                          }
                         }}
                       >
                         <Trash2 className="w-4 h-4 mx-auto" />

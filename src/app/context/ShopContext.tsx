@@ -26,12 +26,34 @@ export interface CurrentUser {
   full_name: string;
   role: string;
   phone?: string;
+  // Existing permissions
   can_view_costs: number;
   can_apply_discount: number;
   max_discount_pct: number;
   can_void_invoice: number;
   can_manage_products: number;
   can_view_reports: number;
+  // New comprehensive permissions
+  can_add_products: number;
+  can_edit_products: number;
+  can_delete_products: number;
+  can_manage_inventory: number;
+  can_manage_customers: number;
+  can_manage_suppliers: number;
+  can_manage_users: number;
+  can_manage_settings: number;
+  can_view_audit_log: number;
+  can_delete_invoices: number;
+  can_give_rewards: number;
+  can_record_expenses: number;
+  can_process_returns: number;
+  // Granular customer/supplier permissions
+  can_add_customers: number;
+  can_edit_customers: number;
+  can_delete_customers: number;
+  can_add_suppliers: number;
+  can_edit_suppliers: number;
+  can_delete_suppliers: number;
   is_active: number;
 }
 

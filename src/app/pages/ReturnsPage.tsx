@@ -18,6 +18,7 @@ import Input from '../components/ui/Input';
 import { notify, messages } from '../utils/toast';
 import { formatNumber } from '../utils/formatters';
 import { useShop } from '../context/ShopContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { Search, Plus, X, Trash2, DollarSign, AlertTriangle, Check, Clock, UserPlus, Edit2 } from 'lucide-react';
 import type { Return, ReturnItem } from '../types/small-shop.types';
 
@@ -36,6 +37,7 @@ const refundMethodLabels: Record<string, { label: string; color: string; descrip
 
 export default function ReturnsPage() {
   const { customers, loadCustomers, products, loadProducts } = useShop();
+  const { canProcessReturns, isAdmin, isManager } = usePermissions();
   const api = (window as any).electronAPI;
   const [returns, setReturns] = useState<Return[]>(mockReturns);
   const [searchQuery, setSearchQuery] = useState('');
@@ -601,21 +603,26 @@ export default function ReturnsPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteReturn(ret.id);
+                              (isAdmin() || isManager()) && handleDeleteReturn(ret.id);
                             }}
+                            disabled={!(isAdmin() || isManager())}
                             title="حذف"
-                            className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                            className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{ 
-                              backgroundColor: 'var(--danger-bg)', 
-                              color: 'var(--danger)' 
+                              backgroundColor: (isAdmin() || isManager()) ? 'var(--danger-bg)' : 'var(--surface-2)', 
+                              color: (isAdmin() || isManager()) ? 'var(--danger)' : 'var(--text-muted)' 
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = 'var(--danger)';
-                              e.currentTarget.style.color = 'white';
+                              if (isAdmin() || isManager()) {
+                                e.currentTarget.style.backgroundColor = 'var(--danger)';
+                                e.currentTarget.style.color = 'white';
+                              }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
-                              e.currentTarget.style.color = 'var(--danger)';
+                              if (isAdmin() || isManager()) {
+                                e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                                e.currentTarget.style.color = 'var(--danger)';
+                              }
                             }}
                           >
                             <Trash2 className="w-4 h-4" />

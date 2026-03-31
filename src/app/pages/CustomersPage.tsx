@@ -16,6 +16,7 @@ import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useShop } from '../context/ShopContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency, formatNumber, formatPhone } from '../utils/formatters';
 import { notify, messages } from '../utils/toast';
 import { useLocation } from 'react-router';
@@ -38,6 +39,7 @@ const trustLevelLabels: Record<string, { label: string; color: string }> = {
 export default function CustomersPage() {
   const location = useLocation();
   const { customers, loadCustomers, currentUser } = useShop();
+  const { canAddCustomers, canEditCustomers, canDeleteCustomers } = usePermissions();
   const api = (window as any).electronAPI;
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -85,12 +87,16 @@ export default function CustomersPage() {
     const errors: { name?: string; phone?: string } = {};
     if (!formData.name?.trim()) {
       errors.name = 'اسم العميل مطلوب';
-    } else if (!/^[؀-ۿa-zA-Z0-9\s]+$/.test(formData.name.trim())) {
+    } else if (!/^[\u0600-\u06FFa-zA-Z0-9\s]+$/.test(formData.name.trim())) {
       errors.name = 'اسم العميل يجب أن يحتوي على حروف وأرقام فقط بدون رموز';
     } else if (isDuplicateName(formData.name, editingCustomer?.id)) {
       errors.name = 'هذا الاسم مستخدم بالفعل، يرجى استخدام اسم آخر';
     }
-    if (!formData.phone?.trim()) errors.phone = 'رقم التليفون مطلوب';
+    if (!formData.phone?.trim()) {
+      errors.phone = 'رقم التليفون مطلوب';
+    } else if (!/^01[0125]\d{8}$/.test(formData.phone.trim())) {
+      errors.phone = 'رقم الموبايل غير صحيح';
+    }
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -248,6 +254,7 @@ export default function CustomersPage() {
             onClick={() => setShowAddForm(!showAddForm)}
             className="flex items-center gap-2 min-w-[48px] justify-center"
             title={showAddForm ? 'إلغاء' : 'إضافة عميل'}
+            disabled={!canAddCustomers}
           >
             {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
             {!showAddForm && 'إضافة عميل'}
@@ -461,39 +468,49 @@ export default function CustomersPage() {
                           <Wallet className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => openEditDialog(customer)}
+                          onClick={() => canEditCustomers && openEditDialog(customer)}
+                          disabled={!canEditCustomers}
                           title="تعديل البيانات"
-                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
-                            backgroundColor: 'var(--info-bg)', 
-                            color: 'var(--info)' 
+                            backgroundColor: canEditCustomers ? 'var(--info-bg)' : 'var(--surface-2)', 
+                            color: canEditCustomers ? 'var(--info)' : 'var(--text-muted)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--info)';
-                            e.currentTarget.style.color = 'white';
+                            if (canEditCustomers) {
+                              e.currentTarget.style.backgroundColor = 'var(--info)';
+                              e.currentTarget.style.color = 'white';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--info-bg)';
-                            e.currentTarget.style.color = 'var(--info)';
+                            if (canEditCustomers) {
+                              e.currentTarget.style.backgroundColor = 'var(--info-bg)';
+                              e.currentTarget.style.color = 'var(--info)';
+                            }
                           }}
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteClick(customer)}
+                          onClick={() => canDeleteCustomers && handleDeleteClick(customer)}
+                          disabled={!canDeleteCustomers}
                           title="حذف العميل"
-                          className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                          className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
-                            backgroundColor: 'var(--danger-bg)', 
-                            color: 'var(--danger)' 
+                            backgroundColor: canDeleteCustomers ? 'var(--danger-bg)' : 'var(--surface-2)', 
+                            color: canDeleteCustomers ? 'var(--danger)' : 'var(--text-muted)' 
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--danger)';
-                            e.currentTarget.style.color = 'white';
+                            if (canDeleteCustomers) {
+                              e.currentTarget.style.backgroundColor = 'var(--danger)';
+                              e.currentTarget.style.color = 'white';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
-                            e.currentTarget.style.color = 'var(--danger)';
+                            if (canDeleteCustomers) {
+                              e.currentTarget.style.backgroundColor = 'var(--danger-bg)';
+                              e.currentTarget.style.color = 'var(--danger)';
+                            }
                           }}
                         >
                           <Trash2 className="w-4 h-4" />

@@ -1,5 +1,6 @@
 import { createHashRouter, Navigate } from "react-router";
 import Layout from "./components/Layout";
+import { PermissionRouteGuard } from "./components/PermissionRouteGuard";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import POSPage from "./pages/POSPage";
@@ -31,17 +32,79 @@ export const router = createHashRouter([
     children: [
       { path: "dashboard", element: <DashboardPage /> },
       { path: "pos", element: <POSPage /> },
-      { path: "inventory", element: <InventoryPage /> },
-      { path: "customers", element: <CustomersPage /> },
-      { path: "suppliers", element: <SuppliersPage /> },
-      { path: "reports", element: <ReportsPage /> },
-      { path: "purchases", element: <PurchasesPage /> },
-      { path: "returns", element: <ReturnsPage /> },
-
-      { path: "expenses", element: <ExpensesPage /> },
-      { path: "users", element: <UsersPage /> },
-      { path: "settings", element: <SettingsPage /> },
       { path: "notifications", element: <NotificationsPage /> },
+      { 
+        path: "inventory", 
+        element: (
+          <PermissionRouteGuard permission="can_manage_inventory">
+            <InventoryPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "customers", 
+        element: (
+          <PermissionRouteGuard permission="can_add_customers">
+            <CustomersPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "suppliers", 
+        element: (
+          <PermissionRouteGuard permission="can_add_suppliers">
+            <SuppliersPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "reports", 
+        element: (
+          <PermissionRouteGuard permission="can_view_reports">
+            <ReportsPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "purchases", 
+        element: (
+          <PermissionRouteGuard permission="can_manage_inventory">
+            <PurchasesPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "returns", 
+        element: (
+          <PermissionRouteGuard permission="can_process_returns">
+            <ReturnsPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "expenses", 
+        element: (
+          <PermissionRouteGuard permission="can_record_expenses">
+            <ExpensesPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "users", 
+        element: (
+          <PermissionRouteGuard permission="can_manage_users">
+            <UsersPage />
+          </PermissionRouteGuard>
+        ) 
+      },
+      { 
+        path: "settings", 
+        element: (
+          <PermissionRouteGuard permission="can_manage_settings">
+            <SettingsPage />
+          </PermissionRouteGuard>
+        ) 
+      },
     ],
   },
 ]);

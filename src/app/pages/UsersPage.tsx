@@ -4,11 +4,13 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { notify, messages } from '../utils/toast';
 import { Plus, Edit, UserCog, X } from 'lucide-react';
+import { usePermissions } from '../hooks/usePermissions';
 import type { User } from '../types/small-shop.types';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const api = (window as any).electronAPI;
+  const { canManageUsers, isAdmin } = usePermissions();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   
@@ -117,6 +119,7 @@ export default function UsersPage() {
             variant="info"
             onClick={() => setShowAddDialog(true)}
             className="flex items-center gap-2"
+            disabled={!canManageUsers}
           >
             <Plus className="w-5 h-5" />
             إضافة مستخدم
@@ -177,8 +180,9 @@ export default function UsersPage() {
                 </div>
                 <div className="col-span-2 text-center">
                   <button
-                    onClick={() => toggleUserStatus(user.id)}
-                    className="px-3 py-1 rounded-full text-[12px] font-bold transition-all"
+                    onClick={() => canManageUsers && toggleUserStatus(user.id)}
+                    disabled={!canManageUsers || user.id === 'user-admin-001'}
+                    className="px-3 py-1 rounded-full text-[12px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       color: user.is_active ? 'var(--primary)' : 'var(--danger)',
                       backgroundColor: user.is_active ? 'var(--primary-light)' : 'var(--danger-bg)'
@@ -194,19 +198,24 @@ export default function UsersPage() {
                 </div>
                 <div className="col-span-1 text-center">
                   <button
-                    onClick={() => openEditDialog(user)}
-                    className="w-8 h-8 rounded flex items-center justify-center transition-all"
+                    onClick={() => canManageUsers && openEditDialog(user)}
+                    disabled={!canManageUsers}
+                    className="w-8 h-8 rounded flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ 
-                      backgroundColor: 'var(--info-bg)', 
-                      color: 'var(--info)' 
+                      backgroundColor: canManageUsers ? 'var(--info-bg)' : 'var(--surface-2)', 
+                      color: canManageUsers ? 'var(--info)' : 'var(--text-muted)' 
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--info)';
-                      e.currentTarget.style.color = 'white';
+                      if (canManageUsers) {
+                        e.currentTarget.style.backgroundColor = 'var(--info)';
+                        e.currentTarget.style.color = 'white';
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--info-bg)';
-                      e.currentTarget.style.color = 'var(--info)';
+                      if (canManageUsers) {
+                        e.currentTarget.style.backgroundColor = 'var(--info-bg)';
+                        e.currentTarget.style.color = 'var(--info)';
+                      }
                     }}
                   >
                     <Edit className="w-4 h-4 mx-auto" />

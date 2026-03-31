@@ -3,6 +3,7 @@ import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useShop } from '../context/ShopContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatters';
 import {
   FileText,
@@ -26,6 +27,7 @@ import {
 
 export default function ReportsPage() {
   const { products, settings } = useShop();
+  const { canDeleteInvoices } = usePermissions();
   const api = (window as any).electronAPI;
   
   const today = new Date().toISOString().split('T')[0];
@@ -349,9 +351,13 @@ export default function ReportsPage() {
                                   <Printer className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => confirmDeleteInvoice(inv.id, inv.invoice_number)}
-                                  className="w-8 h-8 rounded flex items-center justify-center transition-colors"
-                                  style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}
+                                  onClick={() => canDeleteInvoices && confirmDeleteInvoice(inv.id, inv.invoice_number)}
+                                  disabled={!canDeleteInvoices}
+                                  className="w-8 h-8 rounded flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  style={{ 
+                                    backgroundColor: canDeleteInvoices ? 'var(--danger-bg)' : 'var(--surface-2)', 
+                                    color: canDeleteInvoices ? 'var(--danger)' : 'var(--text-muted)' 
+                                  }}
                                   title="حذف"
                                 >
                                   <Trash2 className="w-4 h-4" />

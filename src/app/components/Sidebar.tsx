@@ -16,20 +16,22 @@ import {
   X,
   Bell,
 } from 'lucide-react';
+import { usePermissions } from '../hooks/usePermissions';
 
+// Menu items with required permissions
 const menuItems = [
-  { path: '/dashboard', icon: LayoutDashboard, label: 'لوحة التحكم' },
-  { path: '/pos', icon: ShoppingCart, label: 'نقطة البيع' },
-  { path: '/inventory', icon: Package, label: 'المخزون' },
-  { path: '/customers', icon: Users, label: 'العملاء' },
-  { path: '/suppliers', icon: Truck, label: 'الموردين' },
-  { path: '/reports', icon: FileText, label: 'التقارير' },
-  { path: '/purchases', icon: ShoppingBag, label: 'المشتريات' },
-  { path: '/returns', icon: RotateCcw, label: 'المردودات' },
-  { path: '/notifications', icon: Bell, label: 'الإشعارات' },
-  { path: '/expenses', icon: Receipt, label: 'المصاريف' },
-  { path: '/users', icon: UserCog, label: 'المستخدمين' },
-  { path: '/settings', icon: Settings, label: 'الإعدادات' },
+  { path: '/dashboard', icon: LayoutDashboard, label: 'لوحة التحكم', requiredPermission: null }, // All users
+  { path: '/pos', icon: ShoppingCart, label: 'نقطة البيع', requiredPermission: null }, // All users
+  { path: '/inventory', icon: Package, label: 'المخزون', requiredPermission: 'can_manage_inventory' },
+  { path: '/customers', icon: Users, label: 'العملاء', requiredPermission: 'can_add_customers' }, // Cashier can add customers
+  { path: '/suppliers', icon: Truck, label: 'الموردين', requiredPermission: 'can_add_suppliers' }, // Cashier can add suppliers
+  { path: '/reports', icon: FileText, label: 'التقارير', requiredPermission: 'can_view_reports' }, // Cashier can view reports
+  { path: '/purchases', icon: ShoppingBag, label: 'المشتريات', requiredPermission: 'can_manage_inventory' },
+  { path: '/returns', icon: RotateCcw, label: 'المردودات', requiredPermission: 'can_process_returns' },
+  { path: '/notifications', icon: Bell, label: 'الإشعارات', requiredPermission: null }, // All users
+  { path: '/expenses', icon: Receipt, label: 'المصاريف', requiredPermission: 'can_record_expenses' },
+  { path: '/users', icon: UserCog, label: 'المستخدمين', requiredPermission: 'can_manage_users' },
+  { path: '/settings', icon: Settings, label: 'الإعدادات', requiredPermission: 'can_manage_settings' },
 ];
 
 interface SidebarProps {
@@ -39,6 +41,13 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const location = useLocation();
+  const { hasPermission } = usePermissions();
+
+  // Filter menu items based on permissions
+  const visibleMenuItems = menuItems.filter(item => {
+    if (item.requiredPermission === null) return true;
+    return hasPermission(item.requiredPermission as any);
+  });
   
   return (
     <>
@@ -96,7 +105,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         
         {/* Menu Items */}
         <nav className="flex-1 py-4 overflow-y-auto">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
             
@@ -133,12 +142,10 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           className="p-4 border-t transition-theme"
           style={{ borderColor: 'var(--border-color)' }}
         >
-          <p 
-            className="text-[12px] text-center transition-theme"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            الإصدار 1.0
-          </p>
+          <div className="text-center py-3 border-t transition-theme" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+            <p className="text-[12px] font-medium">الإصدار 1.0</p>
+            <p className="text-[11px] mt-1 opacity-80">برمجة : عبدالرحمن خاللد</p>
+          </div>
         </div>
       </aside>
 

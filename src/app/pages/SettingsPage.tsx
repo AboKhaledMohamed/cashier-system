@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -26,8 +26,65 @@ import {
 type SettingsTab = 'general' | 'company' | 'billing' | 'backup' | 'system';
 
 export default function SettingsPage() {
-  const { settings, loadSettings, updateSettings, currentUser, isDarkMode, toggleTheme } = useShop();
+  const { settings, loadSettings, updateSettings, products, customers, currentUser, isDarkMode, toggleTheme } = useShop();
+  const api = (window as any).electronAPI;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // State for system stats
+  const [systemStats, setSystemStats] = useState({
+    productsCount: 0,
+    customersCount: 0,
+    invoicesCount: 0,
+    usersCount: 0,
+    totalSales: 0,
+    databaseSize: '0 MB',
+    lastBackup: '-'
+  });
+  
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  
+  // Load system stats when system tab is active
+  useEffect(() => {
+    if (activeTab === 'system') {
+      loadSystemStats();
+    }
+  }, [activeTab]);
+  
+  // Load system statistics from database
+  const loadSystemStats = async () => {
+    try {
+      // Get counts from context or fetch from API
+      const productsCount = products?.length || 0;
+      const customersCount = customers?.length || 0;
+      const usersCount = await api.users?.count?.() || 0;
+      
+      // Get invoices count and total sales
+      const invoices = await api.invoices?.getAll?.() || [];
+      const invoicesCount = invoices.length;
+      const totalSales = invoices
+        .filter((inv: any) => inv.invoice_type === 'بيع' && inv.status === 'مكتمل')
+        .reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+      
+      // Get last backup info
+      const backupLog = await api.backup?.getLog?.(1) || [];
+      const lastBackup = backupLog[0]?.started_at 
+        ? new Date(backupLog[0].started_at).toLocaleDateString('ar-EG')
+        : '-';
+      
+      setSystemStats({
+        productsCount,
+        customersCount,
+        invoicesCount,
+        usersCount,
+        totalSales,
+        databaseSize: 'قيد التحميل...',
+        lastBackup
+      });
+    } catch (err) {
+      console.error('Error loading system stats:', err);
+    }
+  };
+  
   const [storeName, setStoreName] = useState('الكاشير الذكي');
   const [storeAddress, setStoreAddress] = useState('شارع الجمهورية، المنصورة');
   const [storePhone, setStorePhone] = useState('0123456789');
@@ -44,8 +101,6 @@ export default function SettingsPage() {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [lastBackup, setLastBackup] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
-  const api = (window as any).electronAPI;
   
   useEffect(() => {
     loadSettings();
@@ -344,73 +399,7 @@ export default function SettingsPage() {
                       </button>
                     </div>
                     
-                    <div 
-                      className="flex items-center justify-between p-4 rounded-lg transition-theme"
-                      style={{ backgroundColor: 'var(--surface-2)' }}
-                    >
-                      <div>
-                        <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>اللغة</p>
-                        <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>لغة واجهة التطبيق</p>
-                      </div>
-                      <select 
-                        className="h-[40px] rounded-lg px-3 text-[14px] outline-none appearance-none cursor-pointer transition-theme"
-                        style={{ 
-                          backgroundColor: 'var(--input-bg)',
-                          color: 'var(--text-primary)',
-                          border: '1px solid var(--border-color)'
-                        }}
-                      >
-                        <option>العربية</option>
-                        <option>English</option>
-                      </select>
-                    </div>
-                    
-                    <div 
-                      className="flex items-center justify-between p-4 rounded-lg transition-theme"
-                      style={{ backgroundColor: 'var(--surface-2)' }}
-                    >
-                      <div>
-                        <p className="text-[14px] font-medium transition-theme" style={{ color: 'var(--text-primary)' }}>حجم الخط</p>
-                        <p className="text-[12px] transition-theme" style={{ color: 'var(--text-muted)' }}>حجم الخط في التطبيق</p>
-                      </div>
-                      <select 
-                        className="h-[40px] rounded-lg px-3 text-[14px] outline-none appearance-none cursor-pointer transition-theme"
-                        style={{ 
-                          backgroundColor: 'var(--input-bg)',
-                          color: 'var(--text-primary)',
-                          border: '1px solid var(--border-color)'
-                        }}
-                      >
-                        <option>صغير</option>
-                        <option selected>متوسط</option>
-                        <option>كبير</option>
-                      </select>
-                    </div>
                   </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={cancelChanges}
-                    className="h-[44px] px-6 transition-theme"
-                    style={{ 
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    إلغاء
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={saveSettings}
-                    className="h-[44px] px-6"
-                    style={{ backgroundColor: 'var(--accent-blue)' }}
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    حفظ التغييرات
-                  </Button>
                 </div>
               </>
             )}
@@ -473,30 +462,6 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={cancelChanges}
-                    className="h-[44px] px-6 transition-theme"
-                    style={{ 
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    إلغاء
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={saveSettings}
-                    className="h-[44px] px-6"
-                    style={{ backgroundColor: 'var(--accent-blue)' }}
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    حفظ التغييرات
-                  </Button>
                 </div>
               </>
             )}
@@ -728,98 +693,48 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={cancelChanges}
-                    className="h-[44px] px-6 transition-theme"
-                    style={{ 
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    إلغاء
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={saveSettings}
-                    className="h-[44px] px-6"
-                    style={{ backgroundColor: 'var(--accent-blue)' }}
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    حفظ التغييرات
-                  </Button>
-                </div>
               </>
             )}
 
             {/* SYSTEM TAB */}
             {activeTab === 'system' && (
               <>
+                {/* System Info Card */}
                 <div 
                   className="rounded-xl p-6 mb-6 transition-theme"
                   style={{ backgroundColor: 'var(--surface-1)' }}
                 >
-                  <h3 className="text-[16px] font-semibold mb-6 transition-theme" style={{ color: 'var(--text-primary)' }}>معلومات النظام</h3>
+                  <h3 className="text-[16px] font-semibold mb-6 transition-theme" style={{ color: 'var(--text-primary)' }}>
+                    معلومات النظام
+                  </h3>
                   
                   <div className="space-y-3">
+                    {/* Version */}
                     <div 
                       className="flex justify-between p-4 rounded-lg transition-theme"
                       style={{ backgroundColor: 'var(--surface-2)' }}
                     >
-                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>الإصدار</span>
-                      <span className="text-[14px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>1.0</span>
+                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>
+                        إصدار النظام
+                      </span>
+                      <span className="text-[14px] font-bold" style={{ color: 'var(--primary)' }}>
+                        v1.0.0
+                      </span>
                     </div>
+                    
+                    {/* Developer */}
                     <div 
                       className="flex justify-between p-4 rounded-lg transition-theme"
                       style={{ backgroundColor: 'var(--surface-2)' }}
                     >
-                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>آخر تحديث</span>
-                      <span className="text-[14px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>24 مارس 2026</span>
-                    </div>
-                    <div 
-                      className="flex justify-between p-4 rounded-lg transition-theme"
-                      style={{ backgroundColor: 'var(--surface-2)' }}
-                    >
-                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>قاعدة البيانات</span>
-                      <span className="text-[14px] font-bold" style={{ color: 'var(--primary)' }}>متصلة</span>
-                    </div>
-                    <div 
-                      className="flex justify-between p-4 rounded-lg transition-theme"
-                      style={{ backgroundColor: 'var(--surface-2)' }}
-                    >
-                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>عدد المنتجات</span>
-                      <span className="text-[14px] font-bold transition-theme" style={{ color: 'var(--text-primary)' }}>672</span>
+                      <span className="text-[14px] transition-theme" style={{ color: 'var(--text-muted)' }}>
+                        المبرمج
+                      </span>
+                      <span className="text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>
+                        Abdelrahman Khaled Mohamed
+                      </span>
                     </div>
                   </div>
-                  
-                  <div className="mt-6">
-                    <Button
-                      variant="info"
-                      fullWidth
-                      onClick={() => notify.info('النظام محدث')}
-                      style={{ backgroundColor: 'var(--info)' }}
-                    >
-                      التحقق من التحديثات
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={cancelChanges}
-                    className="h-[44px] px-6 transition-theme"
-                    style={{ 
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    إلغاء
-                  </Button>
                 </div>
               </>
             )}
